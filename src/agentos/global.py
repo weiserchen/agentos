@@ -1,9 +1,5 @@
 
-class TaskDatabase:
-    def __init__(self):
-        pass
-
-class TaskDatabase:
+class AgentDatabase:
     def __init__(self):
         pass
 
