@@ -1,7 +1,7 @@
 from fastapi import APIRouter, FastAPI
 from typing import Dict, List
-
-from agentos.tasks import TaskEvent, TaskCoordinator, TaskEventType
+from tasks.elem import TaskEvent, TaskEventType
+from tasks.graph import TaskGraphCoordinator
 import asyncio
 import uvicorn
 
@@ -10,7 +10,7 @@ class Agent:
         pass
 
 class AgentProxy:
-    coord_map: Dict[int, TaskCoordinator]
+    coord_map: Dict[int, TaskGraphCoordinator]
     doc_map: Dict[str, str]
 
     def __init__(self):

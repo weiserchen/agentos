@@ -1,4 +1,4 @@
-from agentos.regional import RegionalManager
+from agentos.regional.manager import RegionalManager
 
 if __name__ == '__main__':    
     regional_manager = RegionalManager()
