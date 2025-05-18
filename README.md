@@ -15,6 +15,12 @@ pip install fastapi uvicorn
 python src/main.py
 ```
 
+## Test
+```bash
+pytest -vvv -s ./
+pytest -vvv -s test/test_monitor.py
+```
+
 ## Database API
 
 ### Document Table

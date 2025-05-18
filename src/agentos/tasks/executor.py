@@ -1,6 +1,6 @@
 from .elem import TaskNode, TaskEvent
 from .utils import fetch, fetch_all
-from typing import Dict
+from typing import Dict, List
 import random
 
 class SimpleTaskExecutor:
@@ -21,34 +21,11 @@ class SimpleTaskExecutor:
             self.response = result['body']
             self.done = True
 
-class ChainTaskExecutor:
-    def __init__(self, node: TaskNode, url_map: Dict[str, str], max_depth: int = 10):
-        self.node = node
-        self.url_map = url_map
-        self.max_depth = max_depth
-        self.history = [node.description]
-        self.done = False
-
-    async def start(self):
-        # TODO: use true request
-        for _ in range(self.max_depth):
-            url = self.url_map[self.node.agent]
-            result = await fetch(url)
-            if result['status'] > 200:
-                self.req_error = True
-                break
-            else:
-                body = result['body']
-                self.history.append(result['response'])
-                if 'done' in body:
-                    self.done = True
-                    break
-
-
 class SimpleTreeTaskExecutor:
-    def __init__(self, node: TaskNode, url_map: Dict[str, str], max_depth: int = 10, max_breadth: int = 5, max_voter: int = 3):
+    def __init__(self, node: TaskNode, urls: List[str], max_depth: int = 2, max_breadth: int = 5, max_voter: int = 3):
         self.node = node
-        self.url_map = url_map
+        self.urls = urls
+        self.url_idx = 0
         self.max_depth = max_depth
         self.max_breadth = max_breadth
         self.max_voter = max_voter
@@ -66,6 +43,7 @@ class SimpleTreeTaskExecutor:
             # TODO: add results in the request
             rankings = await fetch_all(voters)
             merged_ranking = []
+            
             
             # TODO: merge rankings
             self.level_rankings.append(results_ranking)

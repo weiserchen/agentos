@@ -1,18 +1,14 @@
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Query
 from pydantic import BaseModel
 from typing import Dict
 import asyncio
 import uvicorn
 
 class AgentInfo(BaseModel):
-    id: str
-    addr: str
-    info_type: str
-    workload: int = 0
-    queue_size: int = 0
+    addr: str = Query(...)
+    workload: int = Query(...)
 
 class AgentStatusRequest(BaseModel):
-    agent_id: str
     agent_info: AgentInfo | None
 
 class RegionalAgentMonitor:
@@ -30,59 +26,47 @@ class RegionalAgentMonitor:
     async def get_agents(self):
         async with self.lock:
             return {
-                "agents": list(self.agents.keys())
+                "agents": list(self.agents.values())
             }
     
-    async def get_agent(self, agent_id: str):
+    async def get_agent(self, addr: str):
         async with self.lock:
             return {
-                "agent_info": self.agents.get(agent_id)
-            }
-    
-    async def add_agent(self, req: AgentStatusRequest):
-        async with self.lock:
-            if req.agent_id in self.agents or req.agent_info is None:
-                return {
-                    "result": False
-                }
-            
-            self.agents[req.agent_id] = req.agent_info
-            return {
-                "result": True
-            }
-    
-    async def delete_agent(self, req: AgentStatusRequest):
-        async with self.lock:
-            if req.agent_id not in self.agents:
-                return {
-                    "result": False
-                }
-            
-            del self.agents[req.agent_id]
-            return {
-                "result": True
+                "agent_info": self.agents.get(addr)
             }
         
-    async def update_agent(self, req: AgentStatusRequest):
+    async def add_agent(self, req: AgentStatusRequest):
         async with self.lock:
-            if req.agent_id not in self.agents or req.agent_info is None:
+            addr = req.agent_info.addr
+            if req.agent_info is None:
                 return {
-                    "result": False
+                    "success": False
                 }
             
-            self.agents[req.agent_id] = req.agent_info
+            self.agents[addr] = req.agent_info
             return {
-                "result": True
+                "success": True
             }
-
+    
+    async def delete_agent(self, agent_addr: str):
+        async with self.lock:
+            if agent_addr not in self.agents:
+                return {
+                    "success": False
+                }
+            
+            del self.agents[agent_addr]
+            return {
+                "success": True
+            }
+        
     def run(self, host: str, port: int):
         app = FastAPI()
         router = APIRouter()
         router.get("/ready")(self.ready)
         router.get("/agent")(self.get_agent)
+        router.post("/agent")(self.add_agent)
+        router.delete("/agent/{agent_addr:path}")(self.delete_agent)
         router.get("/agent/list")(self.get_agents)
-        router.post("/agent/add")(self.add_agent)
-        router.put("/agent/update")(self.update_agent)
-        router.delete("/agent/delete")(self.delete_agent)
         app.include_router(router)
         uvicorn.run(app, host=host, port=port)
