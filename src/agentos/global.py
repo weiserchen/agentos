@@ -1,4 +1,4 @@
-import aiosqlite 
+import aiosqlite # type: ignore
 import asyncio
 
 DB_FILE = "agentos.db"
@@ -106,6 +106,7 @@ class AgentDatabase:
 
     async def save_progress(self, task_id, node_id, result, global_epoch, regional_epoch): # I think you miss send global_epoch, regional_epoch in the github explaination so I assumed that we need them to compare
         async with aiosqlite.connect(self.db_file) as db:
+            await db.execute("PRAGMA foreign_keys = ON")
             async with db.execute(
                 "SELECT global_epoch, regional_epoch FROM Progress WHERE task_id = ? AND node_id = ?", 
                 (task_id, node_id) 
@@ -121,17 +122,90 @@ class AgentDatabase:
 
     async def get_progress(self, task_id, node_id): 
         async with aiosqlite.connect(self.db_file) as db:
+            await db.execute("PRAGMA foreign_keys = ON")
             async with db.execute("SELECT task_id, node_id, global_epoch, regional_epoch, result FROM Progress WHERE task_id = ? AND node_id = ?", (task_id, node_id)) as cursor:
                 return await cursor.fetchone()
 
     async def get_progress_list(self, task_id):
         async with aiosqlite.connect(self.db_file) as db:
+            await db.execute("PRAGMA foreign_keys = ON")
             async with db.execute(" SELECT task_id, node_id, global_epoch, regional_epoch, result FROM Progress WHERE task_id = ?", (task_id,)) as cursor:
                 return await cursor.fetchall()
 
     async def delete_progress(self, task_id, node_id):
         async with aiosqlite.connect(self.db_file) as db:
+            await db.execute("PRAGMA foreign_keys = ON")
             await db.execute("DELETE FROM Progress WHERE task_id = ? AND node_id = ?", (task_id, node_id))
             await db.commit()
             return True      
 
+
+
+
+
+# # Test part 
+#     # NEXT CODE Just for testing
+#     async def get_full_document(self, doc_id):
+#         async with aiosqlite.connect(self.db_file) as db:
+#             async with db.execute("SELECT * FROM Documents WHERE doc_id = ?", (doc_id,)) as cursor:
+#                 return await cursor.fetchone()
+    
+#     async def get_all_task(self):
+#         async with aiosqlite.connect(self.db_file) as db:
+#             async with db.execute("SELECT * FROM Tasks") as cursor:
+#                 return await cursor.fetchall()
+            
+# # testing document table PASS THE TEST
+# async def test_full_document_row():
+#     db = AgentDatabase()
+#     await db.init_db()
+
+#     # Step 1: Insert a document
+#     # doc_id = await db.store_document("text", "Waleed Alharbi;")
+#     # print(f" Document inserted with ID: {doc_id}")
+#     # doc_id = await db.delete_document(3)
+#     # print(f" Document deleted with ID 1: {doc_id}")
+
+#     # Step 2: Retrieve the full row
+#     row = await db.get_full_document(3)
+
+#     if row:
+#         print("Full row returned:", row)
+#         print(f"doc_id: {row[0]}")
+#         print(f"doc_type: {row[1]}")
+#         print(f"doc_content: {row[2]}")
+#     else:
+#         print("Document not found.")
+
+# # testing task table
+# async def test_task():
+#     db = AgentDatabase()
+#     await db.init_db()
+
+#     # Step 1: Insert a document
+#     #task_id = await db.create_task( 1, "search", "Looking for a number")
+#     #print(f" task inserted with ID: {task_id}")
+#     task_id = await db.delete_task(1)
+#     print(f" Document deleted with ID 1: {task_id}")
+
+#     # Step 2: Retrieve the full row
+#     row = await db.get_task(task_id)
+#     all_rows= await db.get_all_task()
+    
+
+#     if row:
+#         print("Full row returned:", row)
+#         print(f"user_id: {row[0]}")
+#         print(f"task type: {row[1]}")
+#         print(f"task describtion: {row[2]}")
+
+#     else:
+#         print("Document not found.")
+    
+#     print("Full TASKS :", all_rows)
+
+
+# # Run the test
+# if __name__ == "__main__":
+#     #asyncio.run(test_full_document_row())
+#     asyncio.run(test_task())
