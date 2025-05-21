@@ -2,7 +2,7 @@ import os
 import openai
 from dotenv import load_dotenv
 import random
-from prompt_templates import *
+from generate_task import get_task_description
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -24,19 +24,16 @@ def send_llm_request(prompt, model, stop) -> list:
     return res.choices[0].message.content
 
 
-all_sentences = open("/srv/m2/ntakbir/Courses/CS237/tree-of-thought-llm/ToT_Minimal/data_100_random_text.txt").readlines()
-# sentences = all_sentences[random.randint(0, len(all_sentences)-1)].strip()
-sentences = all_sentences[0].strip()
-generation_prompt = generation_prompt_template.format(
-    instructions = passage_generation_instuction_template.format(sentences=sentences),
-    output_name = "passage"
-)
+task_name = input("Task name: ")
+task_description = get_task_description(task_name)
+
+generation_prompt = task_description.GenerationPrompt
+vote_prompt = task_description.EvaluationPrompt
+n_rounds = task_description.NRounds
+n_generation_samples = task_description.NGenerationSamples
+n_voters = task_description.NVoters
 
 naive_generation_output = send_llm_request(generation_prompt, model, None)
-
-n_rounds = 2
-n_generation_samples = 5
-n_voters = 5
 
 def vote_prompt_wrap(choices):
     prompt = vote_prompt
@@ -84,21 +81,19 @@ for n_round in range(n_rounds):
     futures = [THREAD_POOL.submit(send_llm_request, vote_prompt, model, None)
                for _ in range(n_voters)]
     votes = [get_vote(f.result()) for f in as_completed(futures)]
+    print(votes, "\n")
 
     chosen_output = get_most_voted_output(votes, outputs)
 
     if n_round == n_rounds - 1:
-        assert "Output:" in chosen_output
+        assert "Output:" in chosen_output, f'Invalid output:\n{chosen_output}'
         tot_generation_output = chosen_output.split('Output:\n')[-1]
     else:
-        assert chosen_output.startswith("Plan:")
+        assert chosen_output.startswith("Plan:"), f'Invalid output:\n{chosen_output}'
         draft_plan = chosen_output[len('Plan:'):].strip()
 
 output = \
 '''
-Sentences:
-{sentences}
-----------------------------------------------------------------------------------------------------------------
 Prompt:
 {prompt}
 ----------------------------------------------------------------------------------------------------------------
@@ -108,7 +103,6 @@ Naive Generation:
 ToT Generation:
 {tot_generation_output}
 '''.format(
-        sentences='\n'.join(f'* {s.strip()}' for s in sentences.split('.') if s.strip()),
         prompt=generation_prompt,
         naive_generation_output=naive_generation_output,
         tot_generation_output=tot_generation_output
