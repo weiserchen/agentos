@@ -26,7 +26,7 @@ def get_task_description(task_name):
     task_description = TaskDescription()
 
     if task_name == 'end_with_random_sentence' or task_name == 'start_with_random_sentence':
-        all_sentences = open("data_100_random_text.txt").readlines()
+        all_sentences = open("text-files/data_100_random_text.txt").readlines()
         sentences = all_sentences[random.randint(0, len(all_sentences)-1)].strip()
         task_description.GenerationPrompt = generation_prompt_template.format(
             instructions = tasks[task_name]['instructions'].format(sentences=sentences),
@@ -34,7 +34,7 @@ def get_task_description(task_name):
         )
 
     elif task_name == 'code_generation':
-        coding_tasks = open("coding_tasks.txt").readlines()
+        coding_tasks = open("text-files/coding_tasks.txt").readlines()
         task = coding_tasks[random.randint(0, len(coding_tasks)-1)].strip()
         task_description.GenerationPrompt = generation_prompt_template.format(
             instructions = tasks[task_name]['instructions'].format(task=task),
