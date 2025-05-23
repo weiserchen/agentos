@@ -1,23 +1,28 @@
-from typing import Dict, Set, Any
-from .elem import TaskNode, TaskEvent, TaskEventType
 import asyncio
 import json
+from typing import Any, Dict, Set
+
+from agentos.tasks.elem import TaskEvent, TaskEventType, TaskNode
+from agentos.tasks.executor import AgentInfo, SimpleTreeTaskExecutor
+from agentos.utils.logger import AsyncLogger
+
 
 def parse_task_graph(graph: Dict[str, Any]) -> Dict[str, TaskNode]:
     node_map = dict()
+
     def parse_rec(parent_name: str, graph: Dict[str, Any]):
         if parent_name == "":
             node_name = "root"
             node_agent = ""
-            node_desc = graph['description']
+            node_desc = graph["description"]
         else:
-            node_name = "-".join(parent_name, graph['name'])
-            node_agent = graph['agent']
-            node_desc = graph['description']
-        
+            node_name = "-".join(parent_name, graph["name"])
+            node_agent = graph["agent"]
+            node_desc = graph["description"]
+
         node_children = []
         for key, value in graph.items():
-            if key != 'name' and key != 'description':
+            if key != "name" and key != "description":
                 child_name = parse_rec(node_name, value)
                 node_children.append(child_name)
 
@@ -27,6 +32,18 @@ def parse_task_graph(graph: Dict[str, Any]) -> Dict[str, TaskNode]:
 
     parse_rec("", graph)
     return node_map
+
+
+class SingleNodeCoordinator:
+    def __init__(self, task_id: int, task_node: TaskNode, agents: Dict[str, AgentInfo]):
+        self.task_id = task_id
+        self.task_node = task_node
+        self.agents = agents
+        self.logger = AsyncLogger(f"task-{task_id}")
+
+    async def start(self):
+        executor = SimpleTreeTaskExecutor(self.logger, self.task_id, self.task_node)
+
 
 class TaskGraphCoordinator:
     task_graph: Dict[str, TaskNode]
@@ -39,7 +56,7 @@ class TaskGraphCoordinator:
         self.task_graph = parse_task_graph(graph_json)
 
     async def task_start(self):
-        root_node = self.task_graph['root']
+        root_node = self.task_graph["root"]
         for child in root_node.children:
             async with self.lock:
                 self.frontier.add(child)
@@ -56,12 +73,10 @@ class TaskGraphCoordinator:
 
                 if len(self.frontier) == 0:
                     return True
-            
+
             for child in node.children:
                 async with self.lock:
                     # TODO: sent request to agent
                     pass
 
         return False
-                    
-            

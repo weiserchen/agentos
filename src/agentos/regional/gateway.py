@@ -1,22 +1,25 @@
-from fastapi import APIRouter, FastAPI
-from contextlib import asynccontextmanager
-from pydantic import BaseModel
-from typing import Dict
-from agentos.tasks.generate_task import get_task_description
-from agentos.tasks.executor import AgentInfo
-from agentos.utils.logger import AsyncLogger
-import uvicorn
 import asyncio
-import aiohttp
 import random
+from contextlib import asynccontextmanager
+from typing import Dict
+
+import aiohttp
+import uvicorn
+from fastapi import APIRouter, FastAPI
+
+from agentos.tasks.executor import AgentInfo
+from agentos.tasks.generate_task import get_task_description
+from agentos.utils.logger import AsyncLogger
+
 
 def pick_random_agent(agents: Dict[str, AgentInfo]) -> AgentInfo:
-    k = random.randint(0, len(agents)-1)
+    k = random.randint(0, len(agents) - 1)
     count = 0
     for id, agent_info in agents:
         if k == count:
             return agent_info
         count += 1
+
 
 class RegionalGateway:
     def __init__(self, monitor_url: str):
@@ -27,10 +30,8 @@ class RegionalGateway:
         self.logger = AsyncLogger("gateway")
 
     async def ready(self):
-        return {
-            "status": "gateway ok"
-        }
-    
+        return {"status": "gateway ok"}
+
     async def query(self, query: str, task_name: str):
         try:
             task_prompt = get_task_description(task_name, query)
@@ -40,46 +41,43 @@ class RegionalGateway:
                 "task_description": task_prompt,
             }
             async with aiohttp.ClientSession() as session:
-                async with session.post(agent.addr+"/coordinator", json=data) as response:
+                async with session.post(
+                    agent.addr + "/coordinator", json=data
+                ) as response:
                     assert response.status < 300
                     body = await response.json()
-                    assert body['success']
-                    task_id = body['task_id']
+                    assert body["success"]
+                    task_id = body["task_id"]
                     return {
                         "success": True,
                         "task_id": task_id,
                     }
-                
+
         except Exception as e:
-            return {
-                "success": False,
-                "reason": f"exception: {e}"
-            }
-        
+            return {"success": False, "reason": f"exception: {e}"}
+
     async def task_status(self, task_id: int):
         async with self.lock:
             if task_id not in self.task_map:
                 return {
                     "status": "not exist",
                 }
-            
+
             task_result = self.task_map[task_id]
             if task_result is None:
-                return {
-                    "status": "waiting"
-                }
+                return {"status": "waiting"}
             else:
                 return {
                     "status": "ok",
                     "result": task_result,
                 }
-            
+
     @asynccontextmanager
     async def lifespan(self, app: FastAPI):
         await self.logger.start()
         yield
         await self.logger.stop()
-    
+
     def run(self, host: str, port: int):
         router = APIRouter()
         router.get("/ready")(self.ready)

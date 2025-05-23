@@ -28,6 +28,19 @@ ps -aux | grep python
 kill -9 <PID>
 ```
 
+## VSCode Settings
+```json
+{
+    "[python]": {
+        "editor.codeActionsOnSave": {
+            "source.fixAll.ruff": "always",
+            "source.organizeImports.ruff": "always"
+        },
+        "editor.defaultFormatter": "charliermarsh.ruff"
+    }
+}
+```
+
 ## Database API
 
 ### Document Table

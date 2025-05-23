@@ -1,16 +1,18 @@
-from fastapi import APIRouter, FastAPI, Query
+import asyncio
 from contextlib import asynccontextmanager
-from pydantic import BaseModel
 from typing import Dict
+
+import uvicorn
+from fastapi import APIRouter, FastAPI
+from pydantic import BaseModel
+
 from agentos.tasks.executor import AgentInfo
 from agentos.utils.logger import AsyncLogger
-import asyncio
-import uvicorn
-from uvicorn import Server, Config
 
 
 class AgentStatusRequest(BaseModel):
     agent_info: AgentInfo | None
+
 
 class RegionalAgentMonitor:
     agents: Dict[str, AgentInfo]
@@ -21,58 +23,48 @@ class RegionalAgentMonitor:
         self.logger = AsyncLogger("monitor")
 
     async def ready(self):
-        return {
-            "status": "agent monitor ok"
-        }
+        return {"status": "agent monitor ok"}
 
     async def get_agents(self):
         async with self.lock:
             return {
                 "agents": self.agents,
             }
-    
+
     async def get_agent(self, id: str):
         async with self.lock:
-            return {
-                "agent_info": self.agents.get(id)
-            }
-        
+            return {"agent_info": self.agents.get(id)}
+
     async def add_agent(self, req: AgentStatusRequest):
         api_path = "add_agent"
-        await self.logger.info(f'{api_path} - {req}')
+        await self.logger.info(f"{api_path} - {req}")
         async with self.lock:
             id = req.agent_info.id
             if req.agent_info is None:
-                return {
-                    "success": False
-                }
-            
+                return {"success": False}
+
             self.agents[id] = req.agent_info
             return {
                 "success": True,
                 "members": self.agents,
             }
-    
+
     async def delete_agent(self, id: str):
         api_path = "delete_agent"
         await self.logger.info(f"{api_path} - {id}")
         async with self.lock:
             if id not in self.agents:
-                return {
-                    "success": False
-                }
-            
+                return {"success": False}
+
             del self.agents[id]
-            return {
-                "success": True
-            }
-        
+            return {"success": True}
+
     @asynccontextmanager
     async def lifespan(self, app: FastAPI):
         await self.logger.start()
         yield
         await self.logger.stop()
-        
+
     def run(self, host: str, port: int):
         router = APIRouter()
         router.get("/ready")(self.ready)

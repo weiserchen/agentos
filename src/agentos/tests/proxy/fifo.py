@@ -1,8 +1,11 @@
-import pytest
 import asyncio
-from agentos.tasks.elem import TaskEvent, TaskEventType
-from agentos.scheduler import QueueTask, FIFOPolicy
 from typing import List
+
+import pytest
+
+from agentos.scheduler import FIFOPolicy, QueueTask
+from agentos.tasks.elem import TaskEvent
+
 
 @pytest.mark.asyncio
 async def test_fifo_policy():
@@ -26,7 +29,7 @@ async def test_fifo_policy():
                 else:
                     await asyncio.sleep(0.1)
                     continue
-            
+
     async def consumer():
         for i in range(input_size):
             while True:
@@ -37,7 +40,7 @@ async def test_fifo_policy():
 
                 out_tasks.append(task)
                 break
-                
+
     await asyncio.gather(producer(), consumer())
 
     for i in range(input_size):

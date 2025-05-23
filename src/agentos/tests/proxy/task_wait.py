@@ -1,8 +1,10 @@
-import pytest
 import asyncio
-from agentos.tasks.elem import TaskEvent, TaskEventType
-from agentos.scheduler import QueueTask, FIFOPolicy
-from typing import List
+
+import pytest
+
+from agentos.scheduler import QueueTask
+from agentos.tasks.elem import TaskEvent
+
 
 @pytest.mark.asyncio
 async def test_queue_task_wait():

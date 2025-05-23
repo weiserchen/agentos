@@ -1,26 +1,26 @@
+import asyncio
+import random
+from contextlib import asynccontextmanager
+
+import aiohttp
+import uvicorn
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from contextlib import asynccontextmanager
-from typing import Dict, List, Tuple, Any
-from agentos.tasks.elem import TaskEvent, AgentCallTaskEvent, TaskEventType
-from agentos.tasks.executor import AgentInfo
-from agentos.scheduler import FIFOPolicy, QueueTask
-from agentos.tasks.graph import TaskGraphCoordinator
-from agentos.utils.logger import AsyncLogger
 from openai import AsyncOpenAI
-from dotenv import load_dotenv
+
 from agentos.config import API_KEY, API_MODEL
-import asyncio
-import uvicorn
-from uvicorn import Server, Config
-import time
-import aiohttp
-import os
-import random
+from agentos.scheduler import FIFOPolicy, QueueTask
+from agentos.tasks.coordinator import TaskGraphCoordinator
+from agentos.tasks.elem import AgentCallTaskEvent, TaskEvent
+from agentos.tasks.executor import AgentInfo
+from agentos.utils.logger import AsyncLogger
+
 
 class Agent:
-    def __init__(self, api_key: str, api_model: str, temp: float = 0.7, max_tokens: int = 2000):
+    def __init__(
+        self, api_key: str, api_model: str, temp: float = 0.7, max_tokens: int = 2000
+    ):
         self.api_key = api_key
         self.api_model = api_model
         self.temp = temp
@@ -35,15 +35,13 @@ class Agent:
             temperature=self.temp,
             max_tokens=self.max_tokens,
             stop=stop,
-            messages=[{
-                "role": "user", 
-                "content": prompt
-            }],
+            messages=[{"role": "user", "content": prompt}],
         )
 
         content = res.choices[0].message.content
         # print(content + "\n==================================\n")
         return content
+
 
 class AgentProxy:
     def __init__(self, id: str, monitor_url: str, update_interval: int = 3):
@@ -61,7 +59,7 @@ class AgentProxy:
         self.logger = AsyncLogger(id)
 
     def run(self, host: str, port: int):
-        self.my_url = f'http://{host}:{port}'
+        self.my_url = f"http://{host}:{port}"
         print(f"proxy: {self.my_url}")
         router = APIRouter()
         router.get("/ready")(self.ready)
@@ -72,8 +70,12 @@ class AgentProxy:
         app.include_router(router)
 
         @app.exception_handler(RequestValidationError)
-        async def validation_exception_handler(request: Request, exc: RequestValidationError):
-            await self.logger.error(f"422 Validation Error on {request.method} {request.url}")
+        async def validation_exception_handler(
+            request: Request, exc: RequestValidationError
+        ):
+            await self.logger.error(
+                f"422 Validation Error on {request.method} {request.url}"
+            )
             await self.logger.error(f"Detail: {exc.errors()}")
             await self.logger.error(f"Body: {exc.body}")
             return JSONResponse(
@@ -102,7 +104,7 @@ class AgentProxy:
             if e.task_id not in self.coord_map:
                 self.coord_map[e.task_id] = TaskGraphCoordinator("")
             coord = self.coord_map[e.task_id]
-        
+
         asyncio.create_task(coord.process_event(e))
         return {
             "success": True,
@@ -113,9 +115,7 @@ class AgentProxy:
         task = QueueTask(e)
         await self.policy.push(task)
         await task.wait()
-        return {
-            "result": task.result
-        }
+        return {"result": task.result}
 
     async def execute_task(self):
         while True:
@@ -124,7 +124,7 @@ class AgentProxy:
             if task is None:
                 await asyncio.sleep(0.1)
                 continue
-            
+
             prompt = task.task_event.task_description
             stop = task.task_event.task_stop
             res = await self.agent.call(prompt, stop)
@@ -138,7 +138,7 @@ class AgentProxy:
             return {
                 "agents": self.agents_view,
             }
-        
+
     async def update_membership(self):
         while True:
             data = {
@@ -148,29 +148,31 @@ class AgentProxy:
                     "workload": await self.policy.workload(),
                 },
             }
-            await self.logger.info(f'heartbeat - {data}')
+            await self.logger.info(f"heartbeat - {data}")
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.post(self.monitor_url+"/agent", json=data) as response:
+                    async with session.post(
+                        self.monitor_url + "/agent", json=data
+                    ) as response:
                         # ignore unsuccessful updates
                         if response.status < 300:
                             body = await response.json()
-                            if body['success']:
+                            if body["success"]:
                                 new_agents_view = dict()
-                                for id, member in body['members'].items():
+                                for id, member in body["members"].items():
                                     agent_info = AgentInfo(
-                                        id=member['id'],
-                                        addr=member['addr'],
-                                        workload=member['workload'],
+                                        id=member["id"],
+                                        addr=member["addr"],
+                                        workload=member["workload"],
                                     )
                                     new_agents_view[id] = agent_info
 
                                 async with self.lock:
                                     self.agents_view = new_agents_view
-                                
-            except HTTPException:
-                print(f'HTTP exception: {e}')
+
+            except HTTPException as e:
+                await self.logger.error(f"HTTP exception: {e}")
             except Exception as e:
                 raise e
-                
+
             await asyncio.sleep(self.update_interval)

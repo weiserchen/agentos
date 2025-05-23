@@ -1,7 +1,7 @@
 import asyncio
 import queue
-from agentos.tasks.elem import TaskEvent
-from typing import Tuple, Any
+from typing import Any, Tuple
+
 
 class QueueTask:
     def __init__(self, task_event: Any):
@@ -19,6 +19,7 @@ class QueueTask:
         async with self.lock:
             await self.cond.wait()
 
+
 class FIFOPolicy:
     def __init__(self, capacity: int):
         self.lock = asyncio.Lock()
@@ -29,11 +30,11 @@ class FIFOPolicy:
     async def size(self) -> Tuple[int, int]:
         async with self.lock:
             return self._size, self.capacity
-        
+
     async def full(self) -> bool:
         async with self.lock:
             return self._size >= self.capacity
-        
+
     async def workload(self) -> int:
         async with self.lock:
             return int(self._size / self.capacity * 100)
@@ -42,7 +43,7 @@ class FIFOPolicy:
         async with self.lock:
             if self._size >= self.capacity:
                 return False
-            
+
             self.q.put(task)
             self._size += 1
             return True
@@ -51,9 +52,10 @@ class FIFOPolicy:
         async with self.lock:
             if self._size == 0:
                 return None
-            
+
             self._size -= 1
             return self.q.get()
+
 
 class MLFQPolicy:
     def __init__(self, q_num: int, capacity: int):
@@ -73,11 +75,11 @@ class MLFQPolicy:
         async with self.lock:
             if self._size >= self.capacity:
                 return False
-            
-            task_level = min(task.task_exec_count, self.q_num-1)
+
+            task_level = min(task.task_exec_count, self.q_num - 1)
             task_level = max(task_level, task.task_priority)
             self.qlist[task_level].put(task)
-            
+
             self._size += 1
             return True
 
@@ -85,7 +87,7 @@ class MLFQPolicy:
         async with self.lock:
             if self._size == 0:
                 return None
-            
+
             if self.tokens_left == 0:
                 self.tokens = [self.q_num - i for i in range(self.q_num)]
                 self.tokens_left = sum(self.tokens)
@@ -98,6 +100,6 @@ class MLFQPolicy:
                     if not self.qlist[i].empty():
                         task = self.qlist[i].get()
                         break
-            
+
             self._size -= 1
             return task

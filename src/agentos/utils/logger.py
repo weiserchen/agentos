@@ -1,21 +1,22 @@
 import asyncio
-import queue
 import logging
+import queue
 import sys
-import time
+
 
 class LogColors:
-    RESET = '\033[0m'
-    BOLD = '\033[1m'
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
     COLORS = {
-        'DEBUG': '\033[94m',     # Blue
-        'INFO': '\033[92m',      # Green
-        'WARNING': '\033[93m',   # Yellow
-        'ERROR': '\033[91m',     # Red
-        'CRITICAL': '\033[95m',  # Magenta
+        "DEBUG": "\033[94m",  # Blue
+        "INFO": "\033[92m",  # Green
+        "WARNING": "\033[93m",  # Yellow
+        "ERROR": "\033[91m",  # Red
+        "CRITICAL": "\033[95m",  # Magenta
     }
 
-    NAME_COLOR = '\033[96m'     # Cyan for logger name
+    NAME_COLOR = "\033[96m"  # Cyan for logger name
+
 
 class ColorFormatter(logging.Formatter):
     def format(self, record):
@@ -28,8 +29,15 @@ class ColorFormatter(logging.Formatter):
 
         return super().format(record)
 
+
 class AsyncLogger:
-    def __init__(self, logger_name = "default", log_file='console', level=logging.INFO, capacity = 1000):
+    def __init__(
+        self,
+        logger_name="default",
+        log_file="console",
+        level=logging.INFO,
+        capacity=1000,
+    ):
         self.lock = asyncio.Lock()
         self.cond = asyncio.Condition(self.lock)
         self.stop_lock = asyncio.Lock()
@@ -44,10 +52,14 @@ class AsyncLogger:
         handler = None
         formatter = None
         if log_file == "console":
-            formatter = ColorFormatter('[%(name)s] - %(levelname)s - %(message)s', datefmt='%H:%M:%S')
+            formatter = ColorFormatter(
+                "[%(name)s] - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
+            )
             handler = logging.StreamHandler(sys.stderr)
         else:
-            formatter = logging.Formatter('[%(name)s] - %(levelname)s - %(message)s', datefmt='%H:%M:%S')
+            formatter = logging.Formatter(
+                "[%(name)s] - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
+            )
             handler = logging.FileHandler(log_file)
 
         handler.setFormatter(formatter)
@@ -84,7 +96,6 @@ class AsyncLogger:
             self.stopped = True
             self.stop_cond.notify_all()
 
-
     async def log(self, level, msg, *args):
         record = self.logger.makeRecord(
             self.logger.name, level, fn=None, lno=0, msg=msg, args=args, exc_info=None
@@ -102,6 +113,9 @@ class AsyncLogger:
 
     async def debug(self, msg, *args):
         await self.log(logging.DEBUG, msg, *args)
+
+    async def warning(self, msg, *args):
+        await self.log(logging.WARNING, msg, *args)
 
     async def error(self, msg, *args):
         await self.log(logging.ERROR, msg, *args)
