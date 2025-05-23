@@ -1,11 +1,13 @@
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from contextlib import asynccontextmanager
 from typing import Dict, List, Tuple, Any
 from agentos.tasks.elem import TaskEvent, AgentCallTaskEvent, TaskEventType
 from agentos.tasks.executor import AgentInfo
 from agentos.scheduler import FIFOPolicy, QueueTask
 from agentos.tasks.graph import TaskGraphCoordinator
+from agentos.utils.logger import AsyncLogger
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 from agentos.config import API_KEY, API_MODEL
@@ -56,43 +58,38 @@ class AgentProxy:
         self.lock = asyncio.Lock()
         self.agent = Agent(API_KEY, API_MODEL)
         self.update_interval = update_interval
+        self.logger = AsyncLogger(id)
 
     def run(self, host: str, port: int):
         self.my_url = f'http://{host}:{port}'
         print(f"proxy: {self.my_url}")
-        app = FastAPI()
         router = APIRouter()
         router.get("/ready")(self.ready)
         router.get("/membership/view")(self.membership_view)
         router.post("/coordinator")(self.handle_coordinator)
         router.post("/agent/call")(self.call_agent)
+        app = FastAPI(lifespan=self.lifespan)
         app.include_router(router)
 
         @app.exception_handler(RequestValidationError)
         async def validation_exception_handler(request: Request, exc: RequestValidationError):
-            print(f"422 Validation Error on {request.method} {request.url}")
-            print(f"Detail: {exc.errors()}")
-            print(f"Body: {exc.body}")
+            await self.logger.error(f"422 Validation Error on {request.method} {request.url}")
+            await self.logger.error(f"Detail: {exc.errors()}")
+            await self.logger.error(f"Body: {exc.body}")
             return JSONResponse(
                 status_code=422,
                 content={"detail": exc.errors()},
             )
 
-        async def update_membership():
-            await self.update_membership()
-
-        async def execute_task():
-            await self.execute_task()
-
-        @app.on_event("startup")
-        async def start_up():
-            asyncio.create_task(update_membership())
-            asyncio.create_task(execute_task())
-
         uvicorn.run(app, host=host, port=port)
-        # config = Config(app=app, host=host, port=port)
-        # server = Server(config)
-        # server.run()
+
+    @asynccontextmanager
+    async def lifespan(self, app: FastAPI):
+        asyncio.create_task(self.update_membership())
+        asyncio.create_task(self.execute_task())
+        await self.logger.start()
+        yield
+        await self.logger.stop()
 
     async def ready(self):
         return {
@@ -151,7 +148,7 @@ class AgentProxy:
                     "workload": await self.policy.workload(),
                 },
             }
-            print(data)
+            await self.logger.info(f'heartbeat - {data}')
             try:
                 async with aiohttp.ClientSession() as session:
                     async with session.post(self.monitor_url+"/agent", json=data) as response:
@@ -159,7 +156,6 @@ class AgentProxy:
                         if response.status < 300:
                             body = await response.json()
                             if body['success']:
-                                # print(body)
                                 new_agents_view = dict()
                                 for id, member in body['members'].items():
                                     agent_info = AgentInfo(
@@ -172,8 +168,6 @@ class AgentProxy:
                                 async with self.lock:
                                     self.agents_view = new_agents_view
                                 
-                                
-                        
             except HTTPException:
                 print(f'HTTP exception: {e}')
             except Exception as e:

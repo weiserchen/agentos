@@ -14,8 +14,8 @@ async def test_async_logger():
     producer_logger = AsyncLogger("producer")
     consumer_logger = AsyncLogger("consumer")
 
-    producer_log_worker = producer_logger.start()
-    consumer_log_worker = consumer_logger.start()
+    producer_log_worker = await producer_logger.start()
+    consumer_log_worker = await consumer_logger.start()
 
     async def producer():
         for i in range(input_size):
@@ -47,11 +47,9 @@ async def test_async_logger():
                 break
                 
     await asyncio.gather(producer(), consumer())
-
-    await producer_logger.stop()
-    await consumer_logger.stop()
+    await asyncio.gather(producer_logger.stop(), consumer_logger.stop())
 
     for i in range(input_size):
         assert out_tasks[i].task_event.task_id == i
 
-    await asyncio.gather(producer_log_worker, consumer_log_worker)
+    # await asyncio.gather(producer_log_worker, consumer_log_worker)

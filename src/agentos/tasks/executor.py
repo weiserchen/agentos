@@ -1,5 +1,6 @@
-from .elem import TaskNode, TaskEvent, AgentCallTaskEvent
-from .utils import http_post
+from agentos.tasks.elem import TaskNode, TaskEvent, AgentCallTaskEvent
+from agentos.tasks.utils import http_post
+from agentos.utils.logger import AsyncLogger
 from typing import Dict, List, Any
 from pydantic import BaseModel
 from fastapi import Query
@@ -78,7 +79,8 @@ def get_most_voted_output(votes, outputs):
     return outputs[most_voted_idx]
 
 class SimpleTreeTaskExecutor:
-    def __init__(self, task_id: int, node: TaskNode, get_agents):
+    def __init__(self, logger: AsyncLogger, task_id: int, node: TaskNode, get_agents):
+        self.logger = logger
         self.task_id = task_id
         self.node = node
         # get the latest list of the agents
@@ -101,13 +103,13 @@ class SimpleTreeTaskExecutor:
             else:
                 stop = '\nOutput:\n'
 
-            print(f'Starting round {round}...')
+            await self.logger.info(f'Starting round {round}...')
 
             current_passage_generation_prompt = generation_prompt
             if draft_plan is not None:
                 current_passage_generation_prompt = f'{generation_prompt}\nDraft Plan: {draft_plan}'
 
-            print('Generating samples...')
+            await self.logger.info('Generating samples...')
             agents: Dict[str, AgentInfo] = self.get_agents()
             # workers_idx = pick_agents(agents, n_samples)
             # workers_idx = [i for i in range(n_samples)]
@@ -124,7 +126,7 @@ class SimpleTreeTaskExecutor:
                 futures.append(http_post(worker.addr+"/agent/call", body))
 
             output_results = await asyncio.gather(*futures)
-            print(f'Samples generated...')
+            await self.logger.info(f'Samples generated...')
             outputs = []
             for result in output_results:
                 if not result['success']:
@@ -135,7 +137,7 @@ class SimpleTreeTaskExecutor:
 
             # TODO: remove failed workers
 
-            print(f'Voting started...')
+            await self.logger.info(f'Voting started...')
             vote_prompt = wrap_vote_prompts(outputs, vote_prompt)
             # voters_idx = pick_agents(agents, n_voters)
             voters = pick_agents_first_k(agents, n_voters)
@@ -160,10 +162,10 @@ class SimpleTreeTaskExecutor:
                 
             votes = [ get_vote(raw_vote)  for raw_vote in raw_votes]
             chosen_output = get_most_voted_output(votes, outputs)
-            print(f'Voting completed...')
+            await self.logger.info(f'Voting completed...')
 
             if round == n_rounds - 1:
-                print('Executor completed.')
+                await self.logger.info('Executor completed.')
                 if "Output:" in chosen_output:
                     self.result = chosen_output.split('Output:\n')[-1]
                     return

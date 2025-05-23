@@ -1,15 +1,15 @@
-from .monitor import RegionalAgentMonitor
-from .webserver import RegionalWebServer
+from agentos.regional.monitor import RegionalAgentMonitor
+from agentos.regional.gateway import RegionalGateway
 import multiprocessing
 
 class RegionalManager:
     host: str
-    web_port: int
+    gateway_port: int
     monitor_port: int
 
-    def __init__(self, host: str = "0.0.0.0", web_port: int = 8100, monitor_port: int = 8101):
+    def __init__(self, host: str = "0.0.0.0", gateway_port: int = 8100, monitor_port: int = 8101):
         self.host = host
-        self.web_port = web_port
+        self.gateway_port = gateway_port
         self.monitor_port = monitor_port
 
     def run(self):
@@ -22,17 +22,17 @@ class RegionalManager:
         agent_monitor_process.start()
         agent_monitor_addr = f'http://{self.host}:{self.monitor_port}'
 
-        web_server = RegionalWebServer(agent_monitor_addr)
-        def web_server_worker():
-            web_server.run(self.host, self.web_port)
+        gateway = RegionalGateway(agent_monitor_addr)
+        def gateway_worker():
+            gateway.run(self.host, self.web_port)
 
-        web_server_process = multiprocessing.Process(target=web_server_worker)
-        web_server_process.start()
+        gateway_process = multiprocessing.Process(target=gateway_worker)
+        gateway_process.start()
 
         try:
             agent_monitor_process.join()
-            web_server_process.join()
+            gateway_process.join()
         except KeyboardInterrupt:
             print("Stopping servers...")
             agent_monitor_process.terminate()
-            web_server_process.terminate()
+            gateway_process.terminate()

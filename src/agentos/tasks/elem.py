@@ -17,6 +17,10 @@ class AgentCallTaskEvent(BaseModel):
     task_description: str
     task_stop: Any
 
+class CoordinatorTaskEvent(BaseModel):
+    task_name: str
+    task_description: str
+
 class TaskNode:
     description: str
     evaluation: str

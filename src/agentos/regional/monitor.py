@@ -1,7 +1,9 @@
 from fastapi import APIRouter, FastAPI, Query
+from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from typing import Dict
 from agentos.tasks.executor import AgentInfo
+from agentos.utils.logger import AsyncLogger
 import asyncio
 import uvicorn
 from uvicorn import Server, Config
@@ -16,6 +18,7 @@ class RegionalAgentMonitor:
     def __init__(self):
         self.agents = dict()
         self.lock = asyncio.Lock()
+        self.logger = AsyncLogger("monitor")
 
     async def ready(self):
         return {
@@ -35,8 +38,9 @@ class RegionalAgentMonitor:
             }
         
     async def add_agent(self, req: AgentStatusRequest):
+        api_path = "add_agent"
+        await self.logger.info(f'{api_path} - {req}')
         async with self.lock:
-            print(req)
             id = req.agent_info.id
             if req.agent_info is None:
                 return {
@@ -50,6 +54,8 @@ class RegionalAgentMonitor:
             }
     
     async def delete_agent(self, id: str):
+        api_path = "delete_agent"
+        await self.logger.info(f"{api_path} - {id}")
         async with self.lock:
             if id not in self.agents:
                 return {
@@ -61,16 +67,20 @@ class RegionalAgentMonitor:
                 "success": True
             }
         
+    @asynccontextmanager
+    async def lifespan(self, app: FastAPI):
+        await self.logger.start()
+        yield
+        await self.logger.stop()
+        
     def run(self, host: str, port: int):
-        app = FastAPI()
         router = APIRouter()
         router.get("/ready")(self.ready)
         router.get("/agent")(self.get_agent)
         router.post("/agent")(self.add_agent)
         router.delete("/agent/{id}")(self.delete_agent)
         router.get("/agent/list")(self.get_agents)
+        app = FastAPI(lifespan=self.lifespan)
         app.include_router(router)
+
         uvicorn.run(app, host=host, port=port)
-        # config = Config(app=app, host=host, port=port)
-        # server = Server(config)
-        # server.run()

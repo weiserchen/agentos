@@ -3,6 +3,8 @@ from agentos.agent.proxy import AgentProxy, AgentInfo
 from agentos.utils.ready import is_url_ready
 from agentos.tasks.elem import TaskEvent, TaskEventType, TaskNode
 from agentos.tasks.executor import SimpleTreeTaskExecutor
+from agentos.tasks.generate_task import get_task_description
+from agentos.utils.logger import AsyncLogger
 from typing import List, Any
 from multiprocessing import Process
 import multiprocessing as mp
@@ -76,12 +78,9 @@ async def test_executor():
         for proxy_url in proxy_urls:
             assert await is_url_ready(proxy_url)
 
-        task_name = 'MULTITHREADED BLOCKED MATRIX MULTIPLICATION IN C++'
-        task_instructions = f'Given a code generation task, write most efficient and fully correct code. The task is: {task_name}'
-        task_description = generation_prompt_template.format(
-            instructions = task_instructions,
-            output_name = "code"
-        )
+        task_name = "code_generation"
+        query = 'MULTITHREADED BLOCKED MATRIX MULTIPLICATION IN C++'
+        task_description = get_task_description(task_name, query)
         task_evaluation = 'Given an instruction and several choices, decide which choice is most promising. Analyze each choice in detail, then conclude in the LAST LINE WITH THIS EXACT PATTERN "The best choice is {s}", where s is the integer id of the choice.'
         task_node = TaskNode(
             description=task_description,
@@ -93,10 +92,15 @@ async def test_executor():
 
         def get_agents():
             return proxies
+        
+        logger = AsyncLogger("executor")
+        await logger.start()
 
-        task_executor = SimpleTreeTaskExecutor(1, task_node, get_agents)
+        task_executor = SimpleTreeTaskExecutor(logger, 1, task_node, get_agents)
         await task_executor.start()
-        print(f'Result: {task_executor.result}')
+        await logger.debug(f'Result: \n{task_executor.result}')
+        await logger.stop()
+
         assert not task_executor.failed
         assert task_executor.result is not None
 
