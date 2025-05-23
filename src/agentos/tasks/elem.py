@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Any
 from enum import Enum
 from pydantic import BaseModel
 
@@ -9,24 +9,24 @@ class TaskEventType(Enum):
     AGENT_HANDOFF = 4
 
 class TaskEvent(BaseModel):
-    sender: str
-    receiver: str
-    task_type: TaskEventType
     task_id: int
-    task_node: str
-    task_priority: int
-    task_history: List[str]
-    task_exec_count: int
-    task_msg: str
+    task_description: str
+    task_evaluation: str
+
+class AgentCallTaskEvent(BaseModel):
+    task_description: str
+    task_stop: Any
 
 class TaskNode:
-    name: str
-    children: List[str]
-    agent: str
     description: str
+    evaluation: str
+    n_rounds: int
+    n_samples: int
+    n_voters: int
 
-    def __init__(self, name: str, description: str, agent: str, children: List[str]):
-        self.name = name
+    def __init__(self, description: str, evaluation: str, n_rounds: int, n_samples: int, n_voters: int):
         self.description = description
-        self.target_agent = agent
-        self.children = children
+        self.evaluation = evaluation
+        self.n_rounds = n_rounds
+        self.n_samples = n_samples
+        self.n_voters = n_voters

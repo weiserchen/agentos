@@ -21,6 +21,13 @@ pytest -vvv -s ./
 pytest -vvv -s test/test_monitor.py
 ```
 
+## Troubleshooting
+When the test behaves weirdly, possibly because of some uncollected zombie processes. Use command line commands to kill the zombie process.
+```bash
+ps -aux | grep python
+kill -9 <PID>
+```
+
 ## Database API
 
 ### Document Table

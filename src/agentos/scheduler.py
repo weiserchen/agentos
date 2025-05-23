@@ -1,13 +1,11 @@
 import asyncio
 import queue
-from typing import Tuple
+from agentos.tasks.elem import TaskEvent
+from typing import Tuple, Any
 
 class QueueTask:
-    def __init__(self, task_id: int, task_query: str, task_priority: int, task_exec_count: int):
-        self.task_id = task_id
-        self.task_query = task_query
-        self.task_priority = task_priority
-        self.task_exec_count = task_exec_count
+    def __init__(self, task_event: Any):
+        self.task_event = task_event
         self.result = ""
         self.lock = asyncio.Lock()
         self.cond = asyncio.Condition(self.lock)

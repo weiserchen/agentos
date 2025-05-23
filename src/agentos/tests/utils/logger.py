@@ -1,11 +1,12 @@
 import pytest
 import asyncio
+from agentos.tasks.elem import TaskEvent, TaskEventType
 from agentos.scheduler import QueueTask, FIFOPolicy
-from agentos.utils import AsyncLogger
+from agentos.utils.logger import AsyncLogger
 from typing import List
 
 @pytest.mark.asyncio
-async def test_fifo_policy():
+async def test_async_logger():
     policy = FIFOPolicy(10)
 
     input_size = 100
@@ -18,7 +19,12 @@ async def test_fifo_policy():
 
     async def producer():
         for i in range(input_size):
-            task = QueueTask(i, f"task {i}", 0, 0)
+            task_event = TaskEvent(
+                task_id=i,
+                task_description="a task",
+                task_evaluation="task {i}",
+            )
+            task = QueueTask(task_event)
             while True:
                 success = await policy.push(task)
                 if success:
@@ -46,6 +52,6 @@ async def test_fifo_policy():
     await consumer_logger.stop()
 
     for i in range(input_size):
-        assert out_tasks[i].task_id == i
+        assert out_tasks[i].task_event.task_id == i
 
     await asyncio.gather(producer_log_worker, consumer_log_worker)

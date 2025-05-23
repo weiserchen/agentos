@@ -1,3 +1,5 @@
 /virtenv
 __pycache__/
 /src/agentos/tasks/*.env
+/src/agentos/agent/*.env
+/src/agentos/*.env
