@@ -11,10 +11,15 @@ from agentos.regional.monitor import RegionalAgentMonitor
 from agentos.utils.logger import AsyncLogger
 from agentos.utils.ready import is_url_ready
 
+gateway_host = "127.0.0.1"
+gateway_port = 10000
+gateway_url = f"http://{gateway_host}:{gateway_port}"
+
 monitor_host = "127.0.0.1"
 monitor_port = 10001
 monitor_url = f"http://{monitor_host}:{monitor_port}"
 
+proxy_domain = "127.0.0.1"
 proxy_host = "127.0.0.1"
 proxy_port_base = 11000
 heartbeat_interval = 1
@@ -29,9 +34,9 @@ def run_monitor():
         raise e
 
 
-def run_proxy(id: str, host: str, port: int):
+def run_proxy(id: str, domain: str, host: str, port: int):
     try:
-        proxy = AgentProxy(id, monitor_url, heartbeat_interval)
+        proxy = AgentProxy(id, gateway_url, domain, monitor_url, heartbeat_interval)
         proxy.run(host, port)
     except Exception as e:
         print(f"Exception: {e}")
@@ -59,7 +64,7 @@ async def test_agent_monitor_proxy():
             proxy_port = proxy_port_base + i
             proxy_url = f"http://{proxy_host}:{proxy_port_base + i}"
             proxy_process = mp.Process(
-                target=run_proxy, args=(proxy_id, proxy_host, proxy_port)
+                target=run_proxy, args=(proxy_id, proxy_domain, proxy_host, proxy_port)
             )
             proxy_ids.append(proxy_id)
             proxy_urls.append(proxy_url)

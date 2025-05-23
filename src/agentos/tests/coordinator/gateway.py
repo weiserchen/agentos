@@ -1,14 +1,13 @@
+import asyncio
 import multiprocessing as mp
 from multiprocessing import Process
 from typing import List
 
+import aiohttp
 import pytest
 
 from agentos.agent.proxy import AgentInfo, AgentProxy
-from agentos.regional.manager import RegionalAgentMonitor
-from agentos.tasks.coordinator import SingleNodeCoordinator
-from agentos.tasks.elem import TaskNode
-from agentos.tasks.generate_task import get_task_description
+from agentos.regional.manager import RegionalAgentMonitor, RegionalGateway
 from agentos.utils.logger import AsyncLogger
 from agentos.utils.ready import is_url_ready
 
@@ -25,6 +24,15 @@ proxy_host = "127.0.0.1"
 proxy_port_base = 11000
 heartbeat_interval = 10
 sem_cap = 3
+
+
+def run_gateway():
+    try:
+        gateway = RegionalGateway(monitor_url)
+        gateway.run(gateway_host, gateway_port)
+    except Exception as e:
+        print(f"Exception: {e}")
+        raise e
 
 
 def run_monitor():
@@ -52,7 +60,7 @@ def run_proxy(id: str, domain: str, host: str, port: int):
 
 
 @pytest.mark.asyncio
-async def test_executor():
+async def test_gateway():
     try:
         logger = AsyncLogger("pytest")
         await logger.start()
@@ -87,32 +95,59 @@ async def test_executor():
         for proxy_url in proxy_urls:
             assert await is_url_ready(logger, proxy_url)
 
-        task_name = "code_generation"
-        query = "MULTITHREADED BLOCKED MATRIX MULTIPLICATION IN C++"
-        task_description = get_task_description(task_name, query)
-        task_evaluation = 'Given an instruction and several choices, decide which choice is most promising. Analyze each choice in detail, then conclude in the LAST LINE WITH THIS EXACT PATTERN "The best choice is {s}", where s is the integer id of the choice.'
-        task_node = TaskNode(
-            description=task_description,
-            evaluation=task_evaluation,
-            n_rounds=2,
-            n_samples=5,
-            n_voters=3,
-        )
+        gateway_process = mp.Process(target=run_gateway)
+        gateway_process.start()
 
-        task_coordinator = SingleNodeCoordinator(1, task_node, proxies)
-        await task_coordinator.start()
-        await logger.debug(f"Result: \n{task_coordinator.result}")
+        assert await is_url_ready(logger, gateway_url)
 
-        assert task_coordinator.success
-        assert task_coordinator.result is not None
+        data = {
+            "task_name": "code_generation",
+            "task_description": "MULTITHREADED BLOCKED MATRIX MULTIPLICATION IN C++",
+        }
+
+        task_id = None
+        async with aiohttp.ClientSession() as session:
+            async with session.post(gateway_url + "/query", json=data) as response:
+                assert response.status < 300
+                body = await response.json()
+                assert body["success"]
+                task_id = body["task_id"]
+
+        sleep_interval = 10
+        while True:
+            async with aiohttp.ClientSession() as session:
+                data = {
+                    "task_id": task_id,
+                }
+                async with session.get(
+                    gateway_url + "/task/status", params=data
+                ) as response:
+                    assert response.status < 300
+                    body = await response.json()
+                    status = body["status"]
+                    if status == "not exist":
+                        error_str = f"task {task_id} not exist"
+                        await logger.error(f"[Task {task_id}] {error_str}")
+                        raise Exception(f"task {task_id} not exist")
+                    elif status == "ok":
+                        assert body["success"]
+                        result = body["result"]
+                        assert result != ""
+                        await logger.debug(f"[Task {task_id}] result: \n{result}")
+                        break
+                    else:
+                        await logger.warning(f"[Task {task_id}] waiting for result...")
+                        await asyncio.sleep(sleep_interval)
 
     finally:
         await logger.stop()
 
         monitor_process.terminate()
+        gateway_process.terminate()
         for proxy_process in proxy_processes:
             proxy_process.terminate()
 
         monitor_process.join()
+        gateway_process.join()
         for proxy_process in proxy_processes:
             proxy_process.join()

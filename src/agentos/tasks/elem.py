@@ -17,14 +17,35 @@ class TaskEvent(BaseModel):
     task_evaluation: str
 
 
+class TaskAction(str, Enum):
+    GENERATION = "generation"
+    VOTING = "voting"
+    DEFAULT = ""
+
+
 class AgentCallTaskEvent(BaseModel):
+    task_id: int
+    task_round: int
+    task_action: TaskAction
     task_description: str
     task_stop: Any
 
 
 class CoordinatorTaskEvent(BaseModel):
+    task_id: int
     task_name: str
     task_description: str
+
+
+class TaskQueryEvent(BaseModel):
+    task_name: str
+    task_description: str
+
+
+class TaskCompleteEvent(BaseModel):
+    task_id: int
+    success: bool
+    result: str
 
 
 class TaskNode:
@@ -47,3 +68,6 @@ class TaskNode:
         self.n_rounds = n_rounds
         self.n_samples = n_samples
         self.n_voters = n_voters
+
+    def __str__(self):
+        return f"\ndescription: {self.description}\nevaluation: {self.evaluation}\nn_rounds: {self.n_rounds}\nn_samples: {self.n_samples}\nn_voters: {self.n_voters}"

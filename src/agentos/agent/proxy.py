@@ -1,19 +1,20 @@
 import asyncio
-import random
 from contextlib import asynccontextmanager
+from typing import Any, Dict
 
 import aiohttp
 import uvicorn
 from fastapi import APIRouter, FastAPI, HTTPException, Request
-from fastapi.exceptions import RequestValidationError
+from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from fastapi.responses import JSONResponse
 from openai import AsyncOpenAI
 
 from agentos.config import API_KEY, API_MODEL
 from agentos.scheduler import FIFOPolicy, QueueTask
-from agentos.tasks.coordinator import TaskGraphCoordinator
-from agentos.tasks.elem import AgentCallTaskEvent, TaskEvent
+from agentos.tasks.coordinator import SingleNodeCoordinator
+from agentos.tasks.elem import AgentCallTaskEvent, CoordinatorTaskEvent
 from agentos.tasks.executor import AgentInfo
+from agentos.tasks.generate_task import get_task_node
 from agentos.utils.logger import AsyncLogger
 
 
@@ -39,28 +40,36 @@ class Agent:
         )
 
         content = res.choices[0].message.content
-        # print(content + "\n==================================\n")
         return content
 
 
 class AgentProxy:
-    def __init__(self, id: str, monitor_url: str, update_interval: int = 3):
+    def __init__(
+        self,
+        id: str,
+        gateway_url: str,
+        monitor_url: str,
+        update_interval: int = 3,
+        queue_cap: int = 10,
+        sem_cap: int = 1,
+    ):
         self.id = id
         self.my_url = ""
-        self.coord_map = dict()
-        self.agents_view = dict()
-        self.local_random = random.Random()
-        self.doc_map = dict()
+        self.gateway_url = gateway_url
         self.monitor_url = monitor_url
+        self.update_interval = update_interval
+        self.queue_cap = queue_cap
+        self.sem_cap = sem_cap
+        self.agent = Agent(API_KEY, API_MODEL)
+        self.coord_map: Dict[int, SingleNodeCoordinator] = dict()
+        self.agents_view: Dict[str, AgentInfo] = dict()
         self.policy = FIFOPolicy(100)
         self.lock = asyncio.Lock()
-        self.agent = Agent(API_KEY, API_MODEL)
-        self.update_interval = update_interval
+        self.semaphore = asyncio.Semaphore(sem_cap)
         self.logger = AsyncLogger(id)
 
-    def run(self, host: str, port: int):
-        self.my_url = f"http://{host}:{port}"
-        print(f"proxy: {self.my_url}")
+    def run(self, domain: str, host: str, port: int):
+        self.my_url = f"http://{domain}:{port}"
         router = APIRouter()
         router.get("/ready")(self.ready)
         router.get("/membership/view")(self.membership_view)
@@ -83,6 +92,19 @@ class AgentProxy:
                 content={"detail": exc.errors()},
             )
 
+        @app.exception_handler(ResponseValidationError)
+        async def response_validation_exception_handler(
+            request: Request, exc: ResponseValidationError
+        ):
+            await self.logger.error(
+                f"500 Response Validation Error on {request.method} {request.url}"
+            )
+            await self.logger.error(f"Detail: {exc.errors()}")
+            return JSONResponse(
+                status_code=500,
+                content={"detail": exc.errors()},
+            )
+
         uvicorn.run(app, host=host, port=port)
 
     @asynccontextmanager
@@ -98,37 +120,93 @@ class AgentProxy:
             "status": "proxy ok",
         }
 
-    async def handle_coordinator(self, e: TaskEvent) -> bool:
-        coord = None
-        async with self.lock:
-            if e.task_id not in self.coord_map:
-                self.coord_map[e.task_id] = TaskGraphCoordinator("")
-            coord = self.coord_map[e.task_id]
+    async def handle_coordinator(self, e: CoordinatorTaskEvent):
+        async def run_coordinator(coord: SingleNodeCoordinator):
+            try:
+                await coord.start()
+                data = {
+                    "task_id": coord.task_id,
+                    "success": coord.success,
+                    "result": coord.result,
+                }
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        self.gateway_url + "/task/update", json=data
+                    ) as response:
+                        if response.status >= 300:
+                            await self.logger.error(
+                                f"run_coordinator - task {coord.task_id} task update connection failed"
+                            )
+                            return
 
-        asyncio.create_task(coord.process_event(e))
-        return {
-            "success": True,
-        }
+                        body = await response.json()
+                        if not body["success"]:
+                            await self.logger.error(
+                                f"run_coordinator - task {coord.task_id} task update failed"
+                            )
+                            return
+
+            except Exception:
+                pass
+
+        try:
+            coord = None
+            await self.logger.debug(
+                f"coordinator - \ntask_name: {e.task_name}\ntask_description: {e.task_description}"
+            )
+            async with self.lock:
+                if e.task_id not in self.coord_map:
+                    task_node = get_task_node(e.task_name, e.task_description)
+                    await self.logger.debug(
+                        f"coordinator - task_node - {str(task_node)}"
+                    )
+                    self.coord_map[e.task_id] = SingleNodeCoordinator(
+                        e.task_id, task_node, self.agents_view
+                    )
+                coord = self.coord_map[e.task_id]
+
+            asyncio.create_task(run_coordinator(coord))
+            return {
+                "success": True,
+            }
+
+        except Exception as e:
+            await self.logger.error(f"coordinator - exception: {e}")
+            raise e
 
     async def call_agent(self, e: AgentCallTaskEvent):
-        # print(e)
         task = QueueTask(e)
         await self.policy.push(task)
         await task.wait()
         return {"result": task.result}
 
     async def execute_task(self):
+        async def run_task(task: QueueTask, prompt: str, stop: Any):
+            try:
+                await self.logger.info("calling agent...")
+                res = await self.agent.call(prompt, stop)
+                await task.set_result(res)
+            except Exception as e:
+                await self.logger.error(f"task failed: {e}")
+            finally:
+                self.semaphore.release()
+
         while True:
+            await self.semaphore.acquire()
+
             task = await self.policy.pop()
-            # print(f'task: {task}')
             if task is None:
-                await asyncio.sleep(0.1)
+                self.semaphore.release()
+                await asyncio.sleep(0.5)
                 continue
 
-            prompt = task.task_event.task_description
-            stop = task.task_event.task_stop
-            res = await self.agent.call(prompt, stop)
-            await task.set_result(res)
+            event: AgentCallTaskEvent = task.task_event
+            await self.logger.info(
+                f"execute_task - id:{event.task_id}, round:{event.task_round}, action: {event.task_action}"
+            )
+            prompt = event.task_description
+            stop = event.task_stop
+            asyncio.create_task(run_task(task, prompt, stop))
 
     async def checkpoint(self):
         pass

@@ -39,10 +39,24 @@ class SingleNodeCoordinator:
         self.task_id = task_id
         self.task_node = task_node
         self.agents = agents
-        self.logger = AsyncLogger(f"task-{task_id}")
+        self.logger = AsyncLogger(f"task-{task_id}-coordinator")
+        self.result = None
+        self.success = False
 
     async def start(self):
-        executor = SimpleTreeTaskExecutor(self.logger, self.task_id, self.task_node)
+        try:
+            await self.logger.start()
+            executor = SimpleTreeTaskExecutor(
+                self.logger, self.task_id, self.task_node, self.agents
+            )
+            await executor.start()
+            self.success = not executor.failed
+            self.result = executor.result
+        except Exception as e:
+            self.success = False
+            self.result = f"exception: {e}"
+        finally:
+            await self.logger.stop()
 
 
 class TaskGraphCoordinator:
