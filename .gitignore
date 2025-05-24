@@ -1,2 +1,16 @@
+# local build and cache
 /virtenv
 __pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+*.pyd
+
+# custom env
+/src/agentos/tasks/examples/*.env
+/src/agentos/agent/*.env
+/src/agentos/*.env
+.vscode/
+
+# OS-generated files
+.DS_Store
