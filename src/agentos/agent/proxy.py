@@ -9,7 +9,7 @@ from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from fastapi.responses import JSONResponse
 from openai import AsyncOpenAI
 
-from agentos.config import API_KEY, API_MODEL
+from agentos.config import API_BASE, API_KEY, API_MODEL
 from agentos.scheduler import FIFOPolicy, QueueTask
 from agentos.tasks.coordinator import SingleNodeCoordinator
 from agentos.tasks.elem import AgentCallTaskEvent, CoordinatorTaskEvent
@@ -22,15 +22,24 @@ class Agent:
     def __init__(
         self, api_key: str, api_model: str, temp: float = 0.7, max_tokens: int = 2000
     ):
+        self.api_base = API_BASE
         self.api_key = api_key
         self.api_model = api_model
         self.temp = temp
         self.max_tokens = max_tokens
 
     async def call(self, prompt: str, stop):
-        client = AsyncOpenAI(
-            api_key=self.api_key,
-        )
+        client = None
+        if self.api_base == "":
+            client = AsyncOpenAI(
+                api_key=self.api_key,
+            )
+        else:
+            client = AsyncOpenAI(
+                base_url=self.api_base,
+                api_key=self.api_key,
+            )
+
         res = await client.chat.completions.create(
             model=self.api_model,
             temperature=self.temp,
@@ -149,6 +158,10 @@ class AgentProxy:
             except Exception:
                 pass
 
+        async def get_agents() -> Dict[str, AgentInfo]:
+            async with self.lock:
+                return self.agents_view
+
         try:
             coord = None
             await self.logger.debug(
@@ -161,7 +174,9 @@ class AgentProxy:
                         f"coordinator - task_node - {str(task_node)}"
                     )
                     self.coord_map[e.task_id] = SingleNodeCoordinator(
-                        e.task_id, task_node, self.agents_view
+                        e.task_id,
+                        task_node,
+                        get_agents,
                     )
                 coord = self.coord_map[e.task_id]
 

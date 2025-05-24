@@ -7,18 +7,34 @@ python3 -m venv virtenv
 source ./virtenv/bin/activate
 
 # dependencies
-pip install fastapi uvicorn
+pip install -r requirements.txt
 ```
 
 ## Run
 ```bash
-python src/main.py
+# service.py
+cd src
+python -m script.service
+
+# client.py
+# NOTE: 
+# - client could fail due to some LLM uncertain output (e.g. using x-nano model)
+# - client may reach OpenAI Token Per Minute (TPM) (e.g. running 3 code generations at the same time)
+cd src
+python -m script.client
+
+# cleanup.py
+# cleanup zombie processes after the test failed or some abnormal behavior observed
+cd src
+python script/cleanup.py
 ```
 
 ## Test
 ```bash
-pytest -vvv -s ./
-pytest -vvv -s test/test_monitor.py
+# -vvv: verbose output
+# -s: real-time logging, not captured by the pytest
+pytest -vvv -s test/proxy/proxy.py
+pytest -vvv -s test/coordinator/gateway.py
 ```
 
 ## Troubleshooting
@@ -29,6 +45,7 @@ kill -9 <PID>
 ```
 
 ## VSCode Settings
+- `.vscode/settings.json`:
 ```json
 {
     "[python]": {

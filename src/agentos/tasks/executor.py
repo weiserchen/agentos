@@ -1,7 +1,7 @@
 import asyncio
 import random
 import re
-from typing import Any, Dict, List
+from typing import Any, Awaitable, Callable, Dict, List
 
 from pydantic import BaseModel
 
@@ -55,12 +55,12 @@ class SimpleTreeTaskExecutor:
         logger: AsyncLogger,
         task_id: int,
         node: TaskNode,
-        agents: Dict[str, AgentInfo],
+        get_agents: Callable[[], Awaitable[Dict[str, AgentInfo]]],
     ):
         self.logger = logger
         self.task_id = task_id
         self.node = node
-        self.agents = agents
+        self.get_agents = get_agents
         self.result = None
         self.done = False
         self.failed = False
@@ -88,7 +88,10 @@ class SimpleTreeTaskExecutor:
                 )
 
             await self.logger.info(f"[Round {round}] generating samples...")
-            workers: List[AgentInfo] = pick_random_k_agents(self.agents, n_samples)
+            workers: List[AgentInfo] = pick_random_k_agents(
+                await self.get_agents(),
+                n_samples,
+            )
             futures = []
             for worker in workers:
                 body = {
@@ -114,7 +117,7 @@ class SimpleTreeTaskExecutor:
 
             await self.logger.info(f"[Round {round}] voting started...")
             vote_prompt = wrap_vote_prompts(outputs, vote_prompt)
-            voters = pick_random_k_agents(self.agents, n_voters)
+            voters = pick_random_k_agents(await self.get_agents(), n_voters)
             futures = []
             for voter in voters:
                 body = {

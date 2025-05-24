@@ -1,6 +1,6 @@
 import asyncio
 import json
-from typing import Any, Dict, Set
+from typing import Any, Awaitable, Callable, Dict, Set
 
 from agentos.tasks.elem import TaskEvent, TaskEventType, TaskNode
 from agentos.tasks.executor import AgentInfo, SimpleTreeTaskExecutor
@@ -35,10 +35,15 @@ def parse_task_graph(graph: Dict[str, Any]) -> Dict[str, TaskNode]:
 
 
 class SingleNodeCoordinator:
-    def __init__(self, task_id: int, task_node: TaskNode, agents: Dict[str, AgentInfo]):
+    def __init__(
+        self,
+        task_id: int,
+        task_node: TaskNode,
+        get_agents: Callable[[], Awaitable[Dict[str, AgentInfo]]],
+    ):
         self.task_id = task_id
         self.task_node = task_node
-        self.agents = agents
+        self.get_agents = get_agents
         self.logger = AsyncLogger(f"task-{task_id}-coordinator")
         self.result = None
         self.success = False
@@ -47,7 +52,10 @@ class SingleNodeCoordinator:
         try:
             await self.logger.start()
             executor = SimpleTreeTaskExecutor(
-                self.logger, self.task_id, self.task_node, self.agents
+                self.logger,
+                self.task_id,
+                self.task_node,
+                self.get_agents,
             )
             await executor.start()
             self.success = not executor.failed

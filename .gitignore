@@ -7,7 +7,7 @@ __pycache__/
 *.pyd
 
 # custom env
-/src/agentos/tasks/*.env
+/src/agentos/tasks/examples/*.env
 /src/agentos/agent/*.env
 /src/agentos/*.env
 .vscode/

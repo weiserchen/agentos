@@ -3,9 +3,6 @@ import multiprocessing as mp
 from multiprocessing import Process
 from typing import List
 
-import aiohttp
-import pytest
-
 from agentos.agent.proxy import AgentInfo, AgentProxy
 from agentos.regional.manager import RegionalAgentMonitor, RegionalGateway
 from agentos.utils.logger import AsyncLogger
@@ -59,10 +56,9 @@ def run_proxy(id: str, domain: str, host: str, port: int):
         raise e
 
 
-@pytest.mark.asyncio
-async def test_gateway():
+async def main():
     try:
-        logger = AsyncLogger("pytest")
+        logger = AsyncLogger("service")
         await logger.start()
 
         monitor_process = mp.Process(target=run_monitor)
@@ -100,53 +96,13 @@ async def test_gateway():
 
         assert await is_url_ready(logger, gateway_url)
 
-        async def execute_task():
-            data = {
-                "task_name": "code_generation",
-                "task_description": "MULTITHREADED BLOCKED MATRIX MULTIPLICATION IN C++",
-            }
+        await logger.info("All service started.")
 
-            task_id = None
-            async with aiohttp.ClientSession() as session:
-                async with session.post(gateway_url + "/query", json=data) as response:
-                    assert response.status < 300
-                    body = await response.json()
-                    assert body["success"]
-                    task_id = body["task_id"]
+        while True:
+            await asyncio.sleep(10)
 
-            sleep_interval = 10
-            while True:
-                async with aiohttp.ClientSession() as session:
-                    data = {
-                        "task_id": task_id,
-                    }
-                    async with session.get(
-                        gateway_url + "/task/status", params=data
-                    ) as response:
-                        assert response.status < 300
-                        body = await response.json()
-                        status = body["status"]
-                        if status == "not exist":
-                            error_str = f"task {task_id} not exist"
-                            await logger.error(f"[Task {task_id}] {error_str}")
-                            raise Exception(f"task {task_id} not exist")
-                        elif status == "ok":
-                            assert body["success"]
-                            result = body["result"]
-                            assert result != ""
-                            await logger.debug(f"[Task {task_id}] result: \n{result}")
-                            break
-                        else:
-                            await logger.warning(
-                                f"[Task {task_id}] waiting for result..."
-                            )
-                            await asyncio.sleep(sleep_interval)
-
-        futures = []
-        for i in range(3):
-            futures.append(execute_task())
-
-        await asyncio.gather(*futures)
+    except KeyboardInterrupt:
+        await logger.info("KeyboardInterrupt caught. Shutting down gracefully.")
 
     finally:
         await logger.stop()
@@ -160,3 +116,7 @@ async def test_gateway():
         gateway_process.join()
         for proxy_process in proxy_processes:
             proxy_process.join()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
