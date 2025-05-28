@@ -19,6 +19,7 @@ monitor_url = f"http://{monitor_host}:{monitor_port}"
 proxy_domain = "127.0.0.1"
 proxy_host = "127.0.0.1"
 proxy_port_base = 11000
+local_api_port_base = 8000
 heartbeat_interval = 10
 sem_cap = 3
 
@@ -41,12 +42,13 @@ def run_monitor():
         raise e
 
 
-def run_proxy(id: str, domain: str, host: str, port: int):
+def run_proxy(id: str, domain: str, host: str, port: int, local_api_port: int):
     try:
         proxy = AgentProxy(
             id,
             gateway_url,
             monitor_url,
+            local_api_port,
             update_interval=heartbeat_interval,
             sem_cap=sem_cap,
         )
@@ -70,13 +72,14 @@ async def main():
         proxy_ids = []
         proxy_urls = []
         proxies = dict()
-        proxies_num = 5
+        proxies_num = 4
         for i in range(proxies_num):
             proxy_id = f"agent-{i}"
             proxy_port = proxy_port_base + i
+            local_api_port = local_api_port_base + i
             proxy_url = f"http://{proxy_host}:{proxy_port_base + i}"
             proxy_process = mp.Process(
-                target=run_proxy, args=(proxy_id, proxy_domain, proxy_host, proxy_port)
+                target=run_proxy, args=(proxy_id, proxy_domain, proxy_host, proxy_port, local_api_port)
             )
             proxies[proxy_id] = AgentInfo(
                 id=proxy_id,

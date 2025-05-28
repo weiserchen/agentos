@@ -85,6 +85,7 @@ class AsyncLogger:
                         shutdown = True
                         break
                     records.append(record)
+                self.cond.notify_all() 
 
             if len(records) == 0:
                 await asyncio.sleep(sleep_time)

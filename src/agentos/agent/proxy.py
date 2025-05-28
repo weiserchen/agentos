@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse
 from openai import AsyncOpenAI
 
 from agentos.config import API_BASE, API_KEY, API_MODEL
+from agentos.config import LOCAL_API_BASE, LOCAL_API_KEY, LOCAL_MODEL
+from agentos.config import run_local
 from agentos.scheduler import FIFOPolicy, QueueTask
 from agentos.tasks.coordinator import SingleNodeCoordinator
 from agentos.tasks.elem import AgentCallTaskEvent, CoordinatorTaskEvent
@@ -20,11 +22,16 @@ from agentos.utils.logger import AsyncLogger
 
 class Agent:
     def __init__(
-        self, api_key: str, api_model: str, temp: float = 0.7, max_tokens: int = 2000
+        self, api_key: str, api_model: str, local_api_port: int, temp: float = 0.7, max_tokens: int = 2000
     ):
-        self.api_base = API_BASE
-        self.api_key = api_key
-        self.api_model = api_model
+        if run_local:
+            self.api_base = LOCAL_API_BASE.format(port=local_api_port)
+            self.api_key = LOCAL_API_KEY
+            self.api_model = LOCAL_MODEL
+        else:
+            self.api_base = API_BASE
+            self.api_key = api_key
+            self.api_model = api_model
         self.temp = temp
         self.max_tokens = max_tokens
 
@@ -58,6 +65,7 @@ class AgentProxy:
         id: str,
         gateway_url: str,
         monitor_url: str,
+        local_api_port: int,
         update_interval: int = 3,
         queue_cap: int = 10,
         sem_cap: int = 1,
@@ -69,7 +77,7 @@ class AgentProxy:
         self.update_interval = update_interval
         self.queue_cap = queue_cap
         self.sem_cap = sem_cap
-        self.agent = Agent(API_KEY, API_MODEL)
+        self.agent = Agent(API_KEY, API_MODEL, local_api_port)
         self.coord_map: Dict[int, SingleNodeCoordinator] = dict()
         self.agents_view: Dict[str, AgentInfo] = dict()
         self.policy = FIFOPolicy(100)

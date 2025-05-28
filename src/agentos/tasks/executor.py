@@ -32,19 +32,24 @@ def wrap_vote_prompts(choices, vote_prompt):
     return prompt
 
 
-def get_vote(voter_output):
+def get_vote(voter_output, outputs):
     pattern = r".*best choice is .*(\d+).*"
-    match = re.match(pattern, voter_output, re.DOTALL)
+    match = re.match(pattern, voter_output, re.IGNORECASE | re.DOTALL)
     if match:
         return int(match.groups()[0]) - 1
     else:
-        raise Exception("Invalid voter output: {voter_output}")
+        # raise Exception("Invalid voter output: {voter_output}")
+        return random.randint(0, len(outputs) - 1)
 
 
 def get_most_voted_output(votes, outputs):
     vote_counts = [0] * len(outputs)
     for v in votes:
-        vote_counts[v] += 1
+        if 0 <= v < len(outputs):
+            vote_counts[v] += 1
+        else:
+            random_idx = random.randint(0, len(outputs) - 1)
+            vote_counts[random_idx] += 1
     most_voted_idx = vote_counts.index(max(vote_counts))
     return outputs[most_voted_idx]
 
@@ -140,22 +145,26 @@ class SimpleTreeTaskExecutor:
                     return
                 raw_votes.append(result["body"]["result"])
 
-            votes = [get_vote(raw_vote) for raw_vote in raw_votes]
+            votes = [get_vote(raw_vote, outputs) for raw_vote in raw_votes]
             chosen_output = get_most_voted_output(votes, outputs)
             await self.logger.info(f"[Round {round}] voting completed...")
 
             if round == n_rounds - 1:
                 await self.logger.info(f"[Task {self.task_id}] task completed.")
-                if "Output:" in chosen_output:
-                    self.result = chosen_output.split("Output:\n")[-1]
+                lower_output = chosen_output.lower()
+                if "output:" in lower_output:
+                    idx = lower_output.find("output:")
+                    self.result = chosen_output[idx + len("output:\n") :].strip()
                     return
                 else:
                     self.failed = True
                     self.result = f"Invalid output:\n{chosen_output}"
                     return
             else:
-                if chosen_output.startswith("Plan:"):
-                    draft_plan = chosen_output[len("Plan:") :].strip()
+                lower_output = chosen_output.lower()
+                if "plan:" in lower_output:
+                    idx = lower_output.find("output:")
+                    draft_plan = chosen_output[idx + len("output:\n") :].strip()
                 else:
                     self.failed = True
                     self.result = f"Invalid output:\n{chosen_output}"

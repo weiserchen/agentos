@@ -1,0 +1,33 @@
+cd /srv/m2/ntakbir/LLM-Inference/vllm/vllm-0.8.2; conda activate vllm;
+CUDA_VISIBLE_DEVICES=0 vllm serve meta-llama/Llama-3.1-8B-Instruct \
+    --tensor-parallel-size 1 --gpu-memory-utilization 0.9 --enforce-eager --port 8000
+
+cd /srv/m2/ntakbir/LLM-Inference/vllm/vllm-0.8.2; conda activate vllm;
+CUDA_VISIBLE_DEVICES=1 vllm serve meta-llama/Llama-3.1-8B-Instruct \
+    --tensor-parallel-size 1 --gpu-memory-utilization 0.9 --enforce-eager --port 8001
+
+cd /srv/m2/ntakbir/LLM-Inference/vllm/vllm-0.8.2; conda activate vllm;
+CUDA_VISIBLE_DEVICES=2 vllm serve meta-llama/Llama-3.1-8B-Instruct \
+    --tensor-parallel-size 1 --gpu-memory-utilization 0.9 --enforce-eager --port 8002
+
+cd /srv/m2/ntakbir/LLM-Inference/vllm/vllm-0.8.2; conda activate vllm;
+CUDA_VISIBLE_DEVICES=3 vllm serve meta-llama/Llama-3.1-8B-Instruct \
+    --tensor-parallel-size 1 --gpu-memory-utilization 0.9 --enforce-eager --port 8003
+
+
+
+cd /srv/m2/ntakbir/LLM-Inference/vllm/vllm-0.8.2; conda activate vllm;
+CUDA_VISIBLE_DEVICES=0 vllm serve mistralai/Mixtral-8x7B-Instruct-v0.1 \
+    --tensor-parallel-size 1 --gpu-memory-utilization 0.99 --enforce-eager --port 8000 --max_model_len=10000
+
+cd /srv/m2/ntakbir/LLM-Inference/vllm/vllm-0.8.2; conda activate vllm;
+CUDA_VISIBLE_DEVICES=1 vllm serve mistralai/Mixtral-8x7B-Instruct-v0.1 \
+    --tensor-parallel-size 1 --gpu-memory-utilization 0.99 --enforce-eager --port 8001 --max_model_len=10000
+
+cd /srv/m2/ntakbir/LLM-Inference/vllm/vllm-0.8.2; conda activate vllm;
+CUDA_VISIBLE_DEVICES=2 vllm serve mistralai/Mixtral-8x7B-Instruct-v0.1 \
+    --tensor-parallel-size 1 --gpu-memory-utilization 0.99 --enforce-eager --port 8002 --max_model_len=10000
+
+cd /srv/m2/ntakbir/LLM-Inference/vllm/vllm-0.8.2; conda activate vllm;
+CUDA_VISIBLE_DEVICES=3 vllm serve mistralai/Mixtral-8x7B-Instruct-v0.1 \
+    --tensor-parallel-size 1 --gpu-memory-utilization 0.99 --enforce-eager --port 8003 --max_model_len=10000

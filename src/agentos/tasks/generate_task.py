@@ -3,13 +3,15 @@ from agentos.tasks.task_descriptions import default_tasks
 
 generation_prompt_template = """{instructions}
 
-Make a plan then generate the output. If given a Draft Plan, then refine the Draft Plan and then generate the output. Your output should be of the following format:
+Make a plan then generate the output. If given a Draft Plan, then use ideas from the draft plan to come with a better plan and then generate the output.
 
-Plan:
+Your output should be of the following format exactly:
+"PLAN:
 Your plan here.
 
-Output:
-Your {output_name} here"""
+OUTPUT:
+Your {output_name} here"
+"""
 
 
 def get_task_description(task_name: str, task_description: str) -> str:
