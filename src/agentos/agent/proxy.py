@@ -9,9 +9,15 @@ from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from fastapi.responses import JSONResponse
 from openai import AsyncOpenAI
 
-from agentos.config import API_BASE, API_KEY, API_MODEL
-from agentos.config import LOCAL_API_BASE, LOCAL_API_KEY, LOCAL_MODEL
-from agentos.config import run_local
+from agentos.config import (
+    API_BASE,
+    API_KEY,
+    API_MODEL,
+    LOCAL_API_BASE,
+    LOCAL_API_KEY,
+    LOCAL_MODEL,
+    run_local,
+)
 from agentos.scheduler import FIFOPolicy, QueueTask
 from agentos.tasks.coordinator import SingleNodeCoordinator
 from agentos.tasks.elem import AgentCallTaskEvent, CoordinatorTaskEvent
@@ -22,7 +28,12 @@ from agentos.utils.logger import AsyncLogger
 
 class Agent:
     def __init__(
-        self, api_key: str, api_model: str, local_api_port: int, temp: float = 0.7, max_tokens: int = 2000
+        self,
+        api_key: str,
+        api_model: str,
+        local_api_port: int,
+        temp: float = 0.7,
+        max_tokens: int = 2000,
     ):
         if run_local:
             self.api_base = LOCAL_API_BASE.format(port=local_api_port)
@@ -65,7 +76,7 @@ class AgentProxy:
         id: str,
         gateway_url: str,
         monitor_url: str,
-        local_api_port: int,
+        local_api_port: int = 8000,
         update_interval: int = 3,
         queue_cap: int = 10,
         sem_cap: int = 1,
@@ -80,7 +91,7 @@ class AgentProxy:
         self.agent = Agent(API_KEY, API_MODEL, local_api_port)
         self.coord_map: Dict[int, SingleNodeCoordinator] = dict()
         self.agents_view: Dict[str, AgentInfo] = dict()
-        self.policy = FIFOPolicy(100)
+        self.policy = FIFOPolicy(queue_cap)
         self.lock = asyncio.Lock()
         self.semaphore = asyncio.Semaphore(sem_cap)
         self.logger = AsyncLogger(id)
@@ -274,6 +285,7 @@ class AgentProxy:
             except HTTPException as e:
                 await self.logger.error(f"HTTP exception: {e}")
             except Exception as e:
+                await self.logger.error(f"exception: {e}")
                 raise e
 
             await asyncio.sleep(self.update_interval)

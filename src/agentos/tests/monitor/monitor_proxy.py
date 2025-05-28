@@ -36,8 +36,13 @@ def run_monitor():
 
 def run_proxy(id: str, domain: str, host: str, port: int):
     try:
-        proxy = AgentProxy(id, gateway_url, domain, monitor_url, heartbeat_interval)
-        proxy.run(host, port)
+        proxy = AgentProxy(
+            id,
+            gateway_url,
+            monitor_url,
+            update_interval=heartbeat_interval,
+        )
+        proxy.run(domain, host, port)
     except Exception as e:
         print(f"Exception: {e}")
         raise e
@@ -56,6 +61,8 @@ async def test_agent_monitor_proxy():
         monitor_process.start()
         assert await is_url_ready(logger, monitor_url)
 
+        await logger.info("monitor started.")
+
         proxy_ids = []
         proxy_urls = []
         proxies_num = 3
@@ -73,6 +80,10 @@ async def test_agent_monitor_proxy():
 
         for proxy_url in proxy_urls:
             assert await is_url_ready(logger, proxy_url)
+
+        await logger.info("proxies started.")
+
+        await asyncio.sleep(3)
 
         MAX_RETRY = 3
         for i in range(MAX_RETRY):

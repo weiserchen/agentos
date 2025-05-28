@@ -37,7 +37,12 @@ def run_monitor():
 
 def run_proxy(id: str, domain: str, host: str, port: int):
     try:
-        proxy = AgentProxy(id, gateway_url, monitor_url, heartbeat_interval)
+        proxy = AgentProxy(
+            id,
+            gateway_url,
+            monitor_url,
+            update_interval=heartbeat_interval,
+        )
         proxy.run(domain, host, port)
     except Exception as e:
         print(f"Exception: {e}")
@@ -55,12 +60,16 @@ async def test_agent_proxy():
 
         assert await is_url_ready(logger, monitor_url)
 
+        await logger.info("monitor started.")
+
         proxy_process = mp.Process(
             target=run_proxy, args=(proxy_id, proxy_domain, proxy_host, proxy_port)
         )
         proxy_process.start()
 
         assert await is_url_ready(logger, proxy_url)
+
+        await logger.info("proxies started.")
 
         MAX_RETRY = 3
         view_ok = False

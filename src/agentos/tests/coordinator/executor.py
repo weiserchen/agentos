@@ -99,7 +99,10 @@ async def test_executor():
             n_voters=3,
         )
 
-        task_coordinator = SingleNodeCoordinator(1, task_node, proxies)
+        async def get_agents():
+            return proxies
+
+        task_coordinator = SingleNodeCoordinator(1, task_node, get_agents)
         await task_coordinator.start()
         await logger.debug(f"Result: \n{task_coordinator.result}")
 

@@ -26,7 +26,9 @@ class RegionalAgentMonitor:
         return {"status": "agent monitor ok"}
 
     async def get_agents(self):
+        api_path = "get_agents"
         async with self.lock:
+            await self.logger.info(f"{api_path} - {self.agents}")
             return {
                 "agents": self.agents,
             }

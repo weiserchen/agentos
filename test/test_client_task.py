@@ -1,18 +1,26 @@
-
-import aiohttp
 import asyncio
-import time
 import random
+import time
 from typing import List, Tuple
 
+import aiohttp
 
-async def _send_req_worker(base_url: str, req: dict, latency_list: List[float], response_list: List[dict], index: int):
+
+async def _send_req_worker(
+    base_url: str,
+    req: dict,
+    latency_list: List[float],
+    response_list: List[dict],
+    index: int,
+):
     async with aiohttp.ClientSession() as session:
         start_time = time.time()
 
         try:
             # Submit the request and get a task_id
-            async with session.post(f"{base_url}/tasks", json=req) as response: # task is an example idk what is your endpoint's name
+            async with session.post(
+                f"{base_url}/tasks", json=req
+            ) as response:  # task is an example idk what is your endpoint's name
                 res_json = await response.json()
                 task_id = res_json.get("task_id")
                 if not task_id:
@@ -21,7 +29,7 @@ async def _send_req_worker(base_url: str, req: dict, latency_list: List[float], 
                     return
 
             # Poll for status
-            status_url = f"{base_url}/tasks/{task_id}" # task is an example idk what is your endpoint's name
+            status_url = f"{base_url}/tasks/{task_id}"  # task is an example idk what is your endpoint's name
             while True:
                 await asyncio.sleep(3)
                 async with session.get(status_url) as status_resp:
@@ -38,19 +46,32 @@ async def _send_req_worker(base_url: str, req: dict, latency_list: List[float], 
             response_list[index] = {"error": str(e)}
 
 
-def send_req(base_url: str, req: dict, latency_list: List[float], response_list: List[dict], index: int):
-    return asyncio.create_task(_send_req_worker(base_url, req, latency_list, response_list, index))
+def send_req(
+    base_url: str,
+    req: dict,
+    latency_list: List[float],
+    response_list: List[dict],
+    index: int,
+):
+    return asyncio.create_task(
+        _send_req_worker(base_url, req, latency_list, response_list, index)
+    )
 
 
 async def send_all(base_url: str, req_list: List[dict]):
     latencies = [0.0] * len(req_list)
     responses = [{} for _ in range(len(req_list))]
-    tasks = [send_req(base_url, req, latencies, responses, i) for i, req in enumerate(req_list)]
+    tasks = [
+        send_req(base_url, req, latencies, responses, i)
+        for i, req in enumerate(req_list)
+    ]
     await asyncio.gather(*tasks)
     return responses, latencies
 
 
-async def send_in_interval(base_url: str, req_list: List[dict], interval_range: Tuple[int, int]):
+async def send_in_interval(
+    base_url: str, req_list: List[dict], interval_range: Tuple[int, int]
+):
     latencies = [0.0] * len(req_list)
     responses = [{} for _ in range(len(req_list))]
     tasks = []
@@ -67,14 +88,21 @@ async def send_in_interval(base_url: str, req_list: List[dict], interval_range: 
 
 def chunk_list(lst, size):
     for i in range(0, len(lst), size):
-        yield lst[i:i + size]
+        yield lst[i : i + size]
 
 
-async def send_batch_interval(base_url: str, req_list: List[dict], interval_range: Tuple[int, int], batch_size: int):
+async def send_batch_interval(
+    base_url: str,
+    req_list: List[dict],
+    interval_range: Tuple[int, int],
+    batch_size: int,
+):
     latencies = [0.0] * len(req_list)
     responses = [{} for _ in range(len(req_list))]
 
-    for batch_idx, batch in enumerate(chunk_list(list(enumerate(req_list)), batch_size)):
+    for batch_idx, batch in enumerate(
+        chunk_list(list(enumerate(req_list)), batch_size)
+    ):
         if batch_idx > 0:
             await asyncio.sleep(random.uniform(*interval_range))
         tasks = [send_req(base_url, req, latencies, responses, i) for i, req in batch]
@@ -83,7 +111,12 @@ async def send_batch_interval(base_url: str, req_list: List[dict], interval_rang
     return responses, latencies
 
 
-async def send_dynamic_batch_interval(base_url: str, req_list: List[dict], interval_range: Tuple[int, int], batch_range: Tuple[int, int]):
+async def send_dynamic_batch_interval(
+    base_url: str,
+    req_list: List[dict],
+    interval_range: Tuple[int, int],
+    batch_range: Tuple[int, int],
+):
     latencies = [0.0] * len(req_list)
     responses = [{} for _ in range(len(req_list))]
     i = 0
@@ -93,8 +126,12 @@ async def send_dynamic_batch_interval(base_url: str, req_list: List[dict], inter
         if batch_idx > 0:
             await asyncio.sleep(random.uniform(*interval_range))
         batch_size = random.randint(*batch_range)
-        batch = [(i + j, req_list[i + j]) for j in range(min(batch_size, len(req_list) - i))]
-        tasks = [send_req(base_url, req, latencies, responses, idx) for idx, req in batch]
+        batch = [
+            (i + j, req_list[i + j]) for j in range(min(batch_size, len(req_list) - i))
+        ]
+        tasks = [
+            send_req(base_url, req, latencies, responses, idx) for idx, req in batch
+        ]
         await asyncio.gather(*tasks)
         i += len(batch)
         batch_idx += 1
@@ -103,6 +140,7 @@ async def send_dynamic_batch_interval(base_url: str, req_list: List[dict], inter
 
 
 if __name__ == "__main__":
+
     async def main():
         base_url = "http://localhost:8100"
         dummy_request = {
@@ -110,7 +148,7 @@ if __name__ == "__main__":
             "task_type": "sample",
             "global_epoch": 1,
             "regional_epoch": 1,
-            "task_description": "test run"
+            "task_description": "test run",
         }
 
         req_list = [dummy_request for _ in range(100)]

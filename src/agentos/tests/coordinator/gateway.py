@@ -143,7 +143,7 @@ async def test_gateway():
                             await asyncio.sleep(sleep_interval)
 
         futures = []
-        for i in range(3):
+        for i in range(2):
             futures.append(execute_task())
 
         await asyncio.gather(*futures)

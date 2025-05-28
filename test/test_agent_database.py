@@ -9,17 +9,21 @@
 # pip install pytest pytest-asyncio aiosqlite
 
 ""
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+import aiosqlite
 import pytest
 import pytest_asyncio
-import aiosqlite
 
 # Weiser, change this, I couldn't use global. I think we need to change the name of the global.py if we want to import it in different file
-from databasecode import AgentDatabase  # the AgentDatabase in databasecode.py in the same folder of this test file
+from databasecode import (
+    AgentDatabase,  # the AgentDatabase in databasecode.py in the same folder of this test file
+)
 
 TEST_DB = "test_agentos.db"
+
 
 # ──────────────────────── FIXED ASYNC FIXTURE ─────────────────────────
 @pytest_asyncio.fixture(scope="module")
@@ -29,6 +33,7 @@ async def setup_db():
     yield db
     if os.path.exists(TEST_DB):
         os.remove(TEST_DB)
+
 
 # ──────────────────────── Document Table ─────────────────────────
 @pytest.mark.asyncio
@@ -45,6 +50,7 @@ async def test_document_crud(setup_db):
 
     missing = await db.get_document(doc_id)
     assert missing is None
+
 
 # ──────────────────────── Task Table ─────────────────────────────
 @pytest.mark.asyncio
@@ -65,7 +71,9 @@ async def test_task_crud(setup_db):
     task = await db.get_task(task_id)
     assert task[1] == "segmentation"
 
-    updated_desc = await db.update_task_description(task_id, 1, 2, "updated task description")
+    updated_desc = await db.update_task_description(
+        task_id, 1, 2, "updated task description"
+    )
     assert updated_desc is True
 
     desc = await db.get_task_description(task_id)
@@ -74,6 +82,7 @@ async def test_task_crud(setup_db):
     deleted = await db.delete_task(task_id)
     assert deleted
     assert await db.get_task(task_id) is None
+
 
 # ──────────────────────── Progress Table ─────────────────────────
 @pytest.mark.asyncio
@@ -103,12 +112,14 @@ async def test_progress_crud(setup_db):
     assert deleted
     assert await db.get_progress(task_id, node_id) is None
 
+
 # ──────────────────────── Edge Cases ─────────────────────────────
 @pytest.mark.asyncio
 async def test_update_nonexistent_task_description(setup_db):
     db = setup_db
     response = await db.update_task_description(9999, 1, 2, "new desc")
     assert response == "Task not found"
+
 
 @pytest.mark.asyncio
 async def test_save_progress_reject_old_epochs(setup_db):
@@ -122,6 +133,7 @@ async def test_save_progress_reject_old_epochs(setup_db):
     row = await db.get_progress(task_id, node_id)
     assert row[4] == "newest"
 
+
 @pytest.mark.asyncio
 async def test_save_progress_equal_global_lower_regional(setup_db):
     db = setup_db
@@ -134,12 +146,14 @@ async def test_save_progress_equal_global_lower_regional(setup_db):
     row = await db.get_progress(task_id, node_id)
     assert row[4] == "first"
 
+
 @pytest.mark.asyncio
 async def test_get_progress_list_empty(setup_db):
     db = setup_db
     task_id = await db.create_task(4, "type", "desc")
     progresses = await db.get_progress_list(task_id)
     assert progresses == []
+
 
 @pytest.mark.asyncio
 async def test_save_progress_invalid_task_id(setup_db):
