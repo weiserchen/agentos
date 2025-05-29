@@ -21,7 +21,7 @@ proxy_host = "127.0.0.1"
 proxy_port_base = 11000
 local_api_port_base = 8000
 heartbeat_interval = 10
-sem_cap = 3
+sem_cap = 100
 
 
 def run_gateway():

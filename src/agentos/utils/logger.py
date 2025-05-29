@@ -35,7 +35,7 @@ class AsyncLogger:
         self,
         logger_name="default",
         log_file="console",
-        level=logging.INFO,
+        level=logging.WARNING,
         capacity=1000,
     ):
         self.lock = asyncio.Lock()
