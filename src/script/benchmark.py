@@ -2,6 +2,7 @@ import asyncio
 import random
 import statistics
 import time
+import logging
 from typing import List
 
 import aiohttp
@@ -84,7 +85,7 @@ async def poisson_arrival(logger: AsyncLogger) -> None:
 
 async def main() -> None:
     global START_TIME
-    logger = AsyncLogger("client")
+    logger = AsyncLogger("benchmark", level=logging.INFO)
     await logger.start()
 
     try:

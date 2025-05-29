@@ -22,7 +22,7 @@ proxy_port_base = 11000
 local_api_port_base = 8000
 heartbeat_interval = 10
 sem_cap = 100
-
+queue_cap = 10000
 
 def run_gateway():
     try:
@@ -50,6 +50,7 @@ def run_proxy(id: str, domain: str, host: str, port: int, local_api_port: int):
             monitor_url,
             local_api_port,
             update_interval=heartbeat_interval,
+            queue_cap=queue_cap,
             sem_cap=sem_cap,
         )
         proxy.run(domain, host, port)

@@ -62,6 +62,7 @@ class AsyncLogger:
             )
             handler = logging.FileHandler(log_file)
 
+        handler.setLevel(level)
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
 
