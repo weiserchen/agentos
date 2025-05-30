@@ -40,6 +40,7 @@ class SingleNodeCoordinator:
         task_id: int,
         task_node: TaskNode,
         get_agents: Callable[[], Awaitable[Dict[str, AgentInfo]]],
+        load_balancing: str = "random",
     ):
         self.task_id = task_id
         self.task_node = task_node
@@ -47,6 +48,7 @@ class SingleNodeCoordinator:
         self.logger = AsyncLogger(f"task-{task_id}-coordinator")
         self.result = None
         self.success = False
+        self.load_balancing = load_balancing
 
     async def start(self):
         try:
@@ -56,6 +58,7 @@ class SingleNodeCoordinator:
                 self.task_id,
                 self.task_node,
                 self.get_agents,
+                self.load_balancing,
             )
             await executor.start()
             self.success = not executor.failed

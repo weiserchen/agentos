@@ -20,9 +20,10 @@ proxy_domain = "127.0.0.1"
 proxy_host = "127.0.0.1"
 proxy_port_base = 11000
 local_api_port_base = 8000
-heartbeat_interval = 10
-sem_cap = 100
-queue_cap = 10000
+heartbeat_interval = 2
+sem_cap = 10
+queue_cap = 1000
+load_balancing = "least_loaded"  # Options: "random", "least_loaded"
 
 def run_gateway():
     try:
@@ -52,6 +53,7 @@ def run_proxy(id: str, domain: str, host: str, port: int, local_api_port: int):
             update_interval=heartbeat_interval,
             queue_cap=queue_cap,
             sem_cap=sem_cap,
+            load_balancing=load_balancing,
         )
         proxy.run(domain, host, port)
     except Exception as e:

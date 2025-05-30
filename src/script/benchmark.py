@@ -8,19 +8,17 @@ from typing import List
 import aiohttp
 
 from agentos.utils.logger import AsyncLogger
+from .benchmark_tasks import benchmark_tasks
 
-REQ_RATE = 0.1
+random.seed(42)
+
+REQ_RATE = 0.2
 RUN_TIME_SEC = 300
 POLL_INTERVAL = 1
 
 gateway_host = "127.0.0.1"
 gateway_port = 10000
 gateway_url = f"http://{gateway_host}:{gateway_port}"
-
-REQUEST_BODY = {
-    "task_name":        "code_generation",
-    "task_description": "MULTITHREADED BLOCKED MATRIX MULTIPLICATION IN C++",
-}
 
 latencies: List[float] = []
 completed = 0
@@ -36,6 +34,7 @@ async def execute_task(logger: AsyncLogger) -> None:
     t_start = time.perf_counter()
 
     async with aiohttp.ClientSession() as session:
+        REQUEST_BODY = benchmark_tasks[random.randint(0, len(benchmark_tasks)-1)]
         async with session.post(gateway_url + "/query", json=REQUEST_BODY) as resp:
             assert resp.status < 300
             body = await resp.json()
