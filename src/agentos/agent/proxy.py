@@ -8,6 +8,7 @@ from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from fastapi.responses import JSONResponse
 from openai import AsyncOpenAI
+from agentos.tasks.utils import http_post 
 
 from agentos.config import (
     API_BASE,
@@ -18,7 +19,7 @@ from agentos.config import (
     LOCAL_MODEL,
     run_local,
 )
-from agentos.scheduler import FIFOPolicy, QueueTask
+from agentos.scheduler import FIFOPolicy, QueueTask, PriorityPolicy
 from agentos.tasks.coordinator import SingleNodeCoordinator
 from agentos.tasks.elem import AgentCallTaskEvent, CoordinatorTaskEvent
 from agentos.tasks.executor import AgentInfo
@@ -77,10 +78,11 @@ class AgentProxy:
         gateway_url: str,
         monitor_url: str,
         local_api_port: int = 8000,
-        update_interval: int = 3,
-        queue_cap: int = 10,
-        sem_cap: int = 1,
+        update_interval: int = 2,
+        queue_cap: int = 1000,
+        sem_cap: int = 10,
         load_balancing: str = "random",
+        scheduling_policy: str = "fifo"
     ):
         self.id = id
         self.my_url = ""
@@ -92,11 +94,17 @@ class AgentProxy:
         self.agent = Agent(API_KEY, API_MODEL, local_api_port)
         self.coord_map: Dict[int, SingleNodeCoordinator] = dict()
         self.agents_view: Dict[str, AgentInfo] = dict()
-        self.policy = FIFOPolicy(queue_cap)
         self.lock = asyncio.Lock()
         self.semaphore = asyncio.Semaphore(sem_cap)
         self.logger = AsyncLogger(id)
         self.load_balancing = load_balancing
+
+        if scheduling_policy == "fifo":
+            self.policy = FIFOPolicy(queue_cap)
+        elif scheduling_policy == "priority":
+            self.policy = PriorityPolicy(queue_cap)
+        else:
+            raise ValueError(f"Unknown scheduling policy: {scheduling_policy}")
 
     def run(self, domain: str, host: str, port: int):
         self.my_url = f"http://{domain}:{port}"
@@ -150,7 +158,7 @@ class AgentProxy:
             "status": "proxy ok",
         }
 
-    async def handle_coordinator(self, e: CoordinatorTaskEvent):
+    async def handle_coordinator(self, task_event: CoordinatorTaskEvent):
         async def run_coordinator(coord: SingleNodeCoordinator):
             try:
                 await coord.start()
@@ -159,22 +167,14 @@ class AgentProxy:
                     "success": coord.success,
                     "result": coord.result,
                 }
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        self.gateway_url + "/task/update", json=data
-                    ) as response:
-                        if response.status >= 300:
-                            await self.logger.error(
-                                f"run_coordinator - task {coord.task_id} task update connection failed"
-                            )
-                            return
-
-                        body = await response.json()
-                        if not body["success"]:
-                            await self.logger.error(
-                                f"run_coordinator - task {coord.task_id} task update failed"
-                            )
-                            return
+                resp = await http_post(self.monitor_url + "/agent", data)
+                assert resp["success"], f"run_coordinator - failed to update agent status: {resp}"
+                body = resp["body"]
+                if not body["success"]:
+                    await self.logger.error(
+                        f"run_coordinator - task {coord.task_id} task update failed"
+                    )
+                    return
 
             except Exception:
                 pass
@@ -186,21 +186,21 @@ class AgentProxy:
         try:
             coord = None
             await self.logger.debug(
-                f"coordinator - \ntask_name: {e.task_name}\ntask_description: {e.task_description}"
+                f"coordinator - \ntask_name: {task_event.task_name}\ntask_description: {task_event.task_description}"
             )
             async with self.lock:
-                if e.task_id not in self.coord_map:
-                    task_node = get_task_node(e.task_name, e.task_description)
+                if task_event.task_id not in self.coord_map:
+                    task_node = get_task_node(task_event)
                     await self.logger.debug(
                         f"coordinator - task_node - {str(task_node)}"
                     )
-                    self.coord_map[e.task_id] = SingleNodeCoordinator(
-                        e.task_id,
+                    self.coord_map[task_event.task_id] = SingleNodeCoordinator(
+                        task_event.task_id,
                         task_node,
                         get_agents,
                         self.load_balancing,
                     )
-                coord = self.coord_map[e.task_id]
+                coord = self.coord_map[task_event.task_id]
 
             asyncio.create_task(run_coordinator(coord))
             return {
@@ -212,7 +212,7 @@ class AgentProxy:
             raise e
 
     async def call_agent(self, e: AgentCallTaskEvent):
-        task = QueueTask(e)
+        task = QueueTask(e, priority=float(e.task_id))
         await self.policy.push(task)
         await task.wait()
         return {"result": task.result}
@@ -270,25 +270,21 @@ class AgentProxy:
             }
             await self.logger.info(f"heartbeat - {data}")
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        self.monitor_url + "/agent", json=data
-                    ) as response:
-                        # ignore unsuccessful updates
-                        if response.status < 300:
-                            body = await response.json()
-                            if body["success"]:
-                                new_agents_view = dict()
-                                for id, member in body["members"].items():
-                                    agent_info = AgentInfo(
-                                        id=member["id"],
-                                        addr=member["addr"],
-                                        workload=member["workload"],
-                                    )
-                                    new_agents_view[id] = agent_info
+                resp = await http_post(self.monitor_url + "/agent", data)
+                if resp["success"]:
+                    body = resp["body"]
+                    if body["success"]:
+                        new_agents_view = dict()
+                        for id, member in body["members"].items():
+                            agent_info = AgentInfo(
+                                id=member["id"],
+                                addr=member["addr"],
+                                workload=member["workload"],
+                            )
+                            new_agents_view[id] = agent_info
 
-                                async with self.lock:
-                                    self.agents_view = new_agents_view
+                        async with self.lock:
+                            self.agents_view = new_agents_view
 
             except HTTPException as e:
                 await self.logger.error(f"HTTP exception: {e}")

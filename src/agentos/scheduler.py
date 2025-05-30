@@ -1,14 +1,16 @@
 import asyncio
 import queue
+import heapq
 from typing import Any, Tuple
 
 
 class QueueTask:
-    def __init__(self, task_event: Any):
+    def __init__(self, task_event: Any, priority: float = 0.0):
         self.task_event = task_event
         self.result = ""
         self.lock = asyncio.Lock()
         self.cond = asyncio.Condition(self.lock)
+        self.priority = priority
 
     async def set_result(self, result):
         async with self.lock:
@@ -56,6 +58,44 @@ class FIFOPolicy:
             self._size -= 1
             return self.q.get()
 
+class PriorityPolicy:
+    def __init__(self, capacity: int):
+        self.lock = asyncio.Lock()
+        self.capacity = capacity
+        self._size = 0
+        self._seq = 0
+        self.heap: list[tuple[float, int, QueueTask]] = []
+
+    async def size(self) -> tuple[int, int]:
+        async with self.lock:
+            return self._size, self.capacity
+
+    async def full(self) -> bool:
+        async with self.lock:
+            return self._size >= self.capacity
+
+    async def workload(self) -> int:
+        async with self.lock:
+            return int(self._size / self.capacity * 100)
+
+    async def push(self, task: QueueTask) -> bool:
+        async with self.lock:
+            if self._size >= self.capacity:
+                return False
+
+            heapq.heappush(self.heap, (task.priority, self._seq, task))
+            self._seq += 1
+            self._size += 1
+            return True
+
+    async def pop(self) -> QueueTask | None:
+        async with self.lock:
+            if self._size == 0:
+                return None
+
+            _, _, task = heapq.heappop(self.heap)
+            self._size -= 1
+            return task
 
 class MLFQPolicy:
     def __init__(self, q_num: int, capacity: int):

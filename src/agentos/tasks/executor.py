@@ -60,7 +60,7 @@ def filter_failed_responses(outputs: List[Any]) -> List[Any]:
     return list(filter(lambda x: x["success"], outputs))
 
 
-def wrap_vote_prompts(choices, vote_prompt):
+def wrap_vote_prompt(choices, vote_prompt):
     prompt = vote_prompt
     for idx, choice in enumerate(choices, 1):
         prompt += f"Choice {idx}:\n{choice}\n"
@@ -88,6 +88,73 @@ def get_most_voted_output(votes, outputs):
     most_voted_idx = vote_counts.index(max(vote_counts))
     return outputs[most_voted_idx]
 
+async def gather_votes_naive(
+    coro_factories: list[Callable[[], Awaitable[dict]]],
+    outputs: list[str],
+) -> list[int]:
+    """
+        Run all voters to completion
+    """
+    tasks = [asyncio.create_task(f()) for f in coro_factories]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    votes: list[int] = []
+    for r in results:
+        try:
+            if isinstance(r, Exception):
+                continue
+            votes.append(get_vote(r["body"]["result"], outputs))
+        except Exception:
+            continue
+    return votes
+
+async def gather_votes_until_majority(
+    coro_factories: list[Callable[[], Awaitable[dict]]],
+    outputs: list[str],
+    majority: int,
+) -> list[int]:
+    """
+    Launch voter coroutines, return as soon as one choice has reached a majority. 
+    Any still-running tasks are cancelled.
+    """
+    tasks: set[asyncio.Task] = {
+        asyncio.create_task(f()) for f in coro_factories
+    }
+
+    vote_counts = [0] * len(outputs)
+    votes = []
+
+    while tasks:
+        done, tasks = await asyncio.wait(
+            tasks, return_when=asyncio.FIRST_COMPLETED
+        )
+
+        for t in done:
+            try:
+                result = t.result()
+                v = get_vote(result["body"]["result"], outputs)
+            except Exception:
+                continue
+
+            votes.append(v)
+            vote_counts[v] += 1
+
+            if vote_counts[v] >= majority:
+                for p in tasks:
+                    p.cancel()
+                return votes
+
+            # Another optimisation: if the *best* candidate can no longer
+            # be beaten even if all remaining votes go elsewhere
+            remaining = len(tasks)
+            best = max(vote_counts)
+            second_best = sorted(vote_counts)[-2] if len(outputs) > 1 else 0
+            if best > second_best + remaining:
+                for p in tasks:
+                    p.cancel()
+                return votes
+
+    return votes
 
 class SimpleTreeTaskExecutor:
     def __init__(
@@ -97,6 +164,7 @@ class SimpleTreeTaskExecutor:
         node: TaskNode,
         get_agents: Callable[[], Awaitable[Dict[str, AgentInfo]]],
         load_balancing: str = "random",
+        voting_starategy: str = "naive", # "naive" or "early_majority"
     ):
         self.logger = logger
         self.task_id = task_id
@@ -126,7 +194,7 @@ class SimpleTreeTaskExecutor:
             current_passage_generation_prompt = generation_prompt
             if draft_plan is not None:
                 current_passage_generation_prompt = (
-                    f"{generation_prompt}\nDraft Plan: {draft_plan}"
+                    f"{generation_prompt}\nGiven Hints: {draft_plan}"
                 )
 
             await self.logger.info(f"[Round {round}] generating samples...")
@@ -152,14 +220,15 @@ class SimpleTreeTaskExecutor:
             for result in output_results:
                 if not result["success"]:
                     self.failed = True
-                    self.result = "Worker Failure"
+                    error_msg = result.get("body", {}).get("error", "Unknown Error")
+                    self.result = f"Worker Failure: {error_msg}"
                     return
                 outputs.append(result["body"]["result"])
 
             # TODO: remove failed workers
 
             await self.logger.info(f"[Round {round}] voting started...")
-            vote_prompt = wrap_vote_prompts(outputs, vote_prompt)
+            vote_prompt = wrap_vote_prompt(outputs, vote_prompt)
             voters = pick_k_agents(await self.get_agents(), n_voters, self.load_balancing)
             futures = []
             for voter in voters:
@@ -179,7 +248,8 @@ class SimpleTreeTaskExecutor:
             for result in raw_vote_results:
                 if not result["success"]:
                     self.failed = True
-                    self.result = "Voter Failure"
+                    error_msg = result.get("body", {}).get("error", "Unknown Error")
+                    self.result = f"Voter Failure: {error_msg}"
                     return
                 raw_votes.append(result["body"]["result"])
 
@@ -201,9 +271,12 @@ class SimpleTreeTaskExecutor:
             else:
                 lower_output = chosen_output.lower()
                 if "plan:" in lower_output:
-                    idx = lower_output.find("output:")
-                    draft_plan = chosen_output[idx + len("output:\n") :].strip()
+                    idx = lower_output.find("plan:")
+                    draft_plan = chosen_output[idx + len("plan:") :].strip()
+                elif "plan" in lower_output[:20]:
+                    idx = lower_output[:20].find("plan")
+                    draft_plan = chosen_output[idx + len("plan") :].strip()
                 else:
                     self.failed = True
-                    self.result = f"Invalid output:\n{chosen_output}"
+                    self.result = f"Invalid plan:\n{chosen_output}"
                     return

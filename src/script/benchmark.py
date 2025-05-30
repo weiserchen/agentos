@@ -50,6 +50,9 @@ async def execute_task(logger: AsyncLogger) -> None:
                 body = await resp.json()
 
         if body["status"] == "ok":
+            if body["success"] is False:
+                await logger.error(f"[Task {task_id}] - failed with error: {body['result']}")
+                return
             break
         elif body["status"] == "not exist":
             await logger.error(f"[Task {task_id}] - not found")

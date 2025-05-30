@@ -18,12 +18,14 @@ monitor_url = f"http://{monitor_host}:{monitor_port}"
 
 proxy_domain = "127.0.0.1"
 proxy_host = "127.0.0.1"
+num_proxies = 4
 proxy_port_base = 11000
 local_api_port_base = 8000
 heartbeat_interval = 2
 sem_cap = 10
 queue_cap = 1000
-load_balancing = "least_loaded"  # Options: "random", "least_loaded"
+load_balancing = "random"  # Options: "random", "least_loaded"
+scheduling_policy = "fifo"  # Options: "fifo", "priority"
 
 def run_gateway():
     try:
@@ -54,6 +56,7 @@ def run_proxy(id: str, domain: str, host: str, port: int, local_api_port: int):
             queue_cap=queue_cap,
             sem_cap=sem_cap,
             load_balancing=load_balancing,
+            scheduling_policy=scheduling_policy,
         )
         proxy.run(domain, host, port)
     except Exception as e:
@@ -75,8 +78,7 @@ async def main():
         proxy_ids = []
         proxy_urls = []
         proxies = dict()
-        proxies_num = 4
-        for i in range(proxies_num):
+        for i in range(num_proxies):
             proxy_id = f"agent-{i}"
             proxy_port = proxy_port_base + i
             local_api_port = local_api_port_base + i

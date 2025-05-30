@@ -58,6 +58,9 @@ class RegionalGateway:
                 "task_id": task_id,
                 "task_name": e.task_name,
                 "task_description": e.task_description,
+                "n_rounds": e.n_rounds,
+                "n_samples": e.n_samples,
+                "n_voters": e.n_voters,
             }
             await self.logger.debug(f"query - {data}")
             async with aiohttp.ClientSession() as session:

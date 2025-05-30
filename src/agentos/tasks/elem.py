@@ -35,11 +35,17 @@ class CoordinatorTaskEvent(BaseModel):
     task_id: int
     task_name: str
     task_description: str
+    n_rounds: int
+    n_samples: int
+    n_voters: int
 
 
 class TaskQueryEvent(BaseModel):
     task_name: str
     task_description: str
+    n_rounds: int
+    n_samples: int
+    n_voters: int
 
 
 class TaskCompleteEvent(BaseModel):
