@@ -7,7 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from agentos.service.db import AgentDatabase
+from agentos.tasks.db import AgentDatabase
 from agentos.utils.logger import AsyncLogger
 
 

@@ -20,7 +20,7 @@ from agentos.config import (
 )
 from agentos.scheduler import FIFOPolicy, QueueTask
 from agentos.tasks.coordinator import SingleNodeCoordinator
-from agentos.tasks.elem import AgentCallTaskEvent, CoordinatorTaskEvent
+from agentos.tasks.elem import AgentCallTaskEvent, CoordinatorTaskEvent, TaskStatus
 from agentos.tasks.executor import AgentInfo
 from agentos.tasks.generate_task import get_task_node
 from agentos.utils.logger import AsyncLogger
@@ -76,7 +76,9 @@ class AgentProxy:
         id: str,
         gateway_url: str,
         monitor_url: str,
+        dbserver_url: str,
         local_api_port: int = 8000,
+        persistence: bool = True,
         update_interval: int = 3,
         queue_cap: int = 10,
         sem_cap: int = 1,
@@ -85,6 +87,8 @@ class AgentProxy:
         self.my_url = ""
         self.gateway_url = gateway_url
         self.monitor_url = monitor_url
+        self.dbserver_url = dbserver_url
+        self.persistence = persistence
         self.update_interval = update_interval
         self.queue_cap = queue_cap
         self.sem_cap = sem_cap
@@ -151,31 +155,68 @@ class AgentProxy:
     async def handle_coordinator(self, e: CoordinatorTaskEvent):
         async def run_coordinator(coord: SingleNodeCoordinator):
             try:
-                await coord.start()
-                data = {
-                    "task_id": coord.task_id,
-                    "success": coord.success,
-                    "result": coord.result,
-                }
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        self.gateway_url + "/task/update", json=data
-                    ) as response:
-                        if response.status >= 300:
-                            await self.logger.error(
-                                f"run_coordinator - task {coord.task_id} task update connection failed"
-                            )
-                            return
+                async for _ in coord.run():
+                    if self.persistence:
+                        progress_data = {
+                            "task_id": coord.task_id,
+                            "round": coord.round,
+                            "term": coord.term,
+                            "result": coord.result,
+                        }
+                        async with aiohttp.ClientSession() as session:
+                            async with session.post(
+                                self.dbserver_url + "/task/progress", json=progress_data
+                            ) as response:
+                                assert response.status < 300, (
+                                    f"db progress update - error status code: {response.status} - {progress_data}"
+                                )
+                                body = await response.json()
+                                assert body["success"], (
+                                    f"db progress update - request not successful - {body['err']}"
+                                )
 
-                        body = await response.json()
-                        if not body["success"]:
-                            await self.logger.error(
-                                f"run_coordinator - task {coord.task_id} task update failed"
-                            )
-                            return
+                            if coord.completed:
+                                status_data = {
+                                    "task_id": coord.task_id,
+                                    "term": coord.term,
+                                    "task_status": TaskStatus.COMPLETED,
+                                    "task_result": coord.result,
+                                }
+                                async with session.put(
+                                    self.dbserver_url + "/task/status", json=status_data
+                                ) as response:
+                                    assert response.status < 300, (
+                                        f"db task status update - error status code: {response.status} - {status_data}"
+                                    )
+                                    body = await response.json()
+                                    assert body["success"], (
+                                        f"db task status update - request not successful - {body['err']}"
+                                    )
 
-            except Exception:
-                pass
+                    gw_data = {
+                        "task_id": coord.task_id,
+                        "round": coord.round,
+                        "term": coord.term,
+                        "completed": coord.completed,
+                        "success": coord.success,
+                        "result": coord.result,
+                    }
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post(
+                            self.gateway_url + "/task/update", json=gw_data
+                        ) as response:
+                            assert response.status < 300, (
+                                f"gateway update - error status code: {response.status} - {gw_data}"
+                            )
+                            body = await response.json()
+                            assert body["success"], (
+                                f"gateway update - request not successful - {body['err']}"
+                            )
+
+            except Exception as e:
+                await self.logger.error(
+                    f"run_coordinator - task {coord.task_id} task update failed: {e}"
+                )
 
         async def get_agents() -> Dict[str, AgentInfo]:
             async with self.lock:
@@ -194,6 +235,7 @@ class AgentProxy:
                     )
                     self.coord_map[e.task_id] = SingleNodeCoordinator(
                         e.task_id,
+                        e.term,
                         task_node,
                         get_agents,
                     )
@@ -241,9 +283,6 @@ class AgentProxy:
             prompt = event.task_description
             stop = event.task_stop
             asyncio.create_task(run_task(task, prompt, stop))
-
-    async def checkpoint(self):
-        pass
 
     async def membership_view(self):
         async with self.lock:

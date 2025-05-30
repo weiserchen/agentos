@@ -12,7 +12,7 @@ from agentos.utils.ready import is_url_ready
 db_file = "pytest.db"
 dbserver = AgentDatabaseServer(db_file)
 dbserver_host = "127.0.0.1"
-dbserver_port = 10003
+dbserver_port = 10002
 dbserver_url = f"http://{dbserver_host}:{dbserver_port}"
 
 

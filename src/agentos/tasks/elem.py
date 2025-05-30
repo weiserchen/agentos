@@ -26,6 +26,7 @@ class TaskAction(str, Enum):
 class TaskStatus(str, Enum):
     PENDING = "pending"
     COMPLETED = "completed"
+    NON_EXIST = "non_exist"
     ABORTED = "aborted"
 
 
@@ -39,6 +40,7 @@ class AgentCallTaskEvent(BaseModel):
 
 class CoordinatorTaskEvent(BaseModel):
     task_id: int
+    term: int
     task_name: str
     task_description: str
 
@@ -48,8 +50,11 @@ class TaskQueryEvent(BaseModel):
     task_description: str
 
 
-class TaskCompleteEvent(BaseModel):
+class TaskUpdateEvent(BaseModel):
     task_id: int
+    round: int
+    term: int
+    completed: bool
     success: bool
     result: str
 

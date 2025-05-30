@@ -7,7 +7,7 @@ import aiohttp
 import uvicorn
 from fastapi import APIRouter, FastAPI
 
-from agentos.tasks.elem import TaskCompleteEvent, TaskQueryEvent
+from agentos.tasks.elem import TaskQueryEvent, TaskStatus, TaskUpdateEvent
 from agentos.tasks.executor import AgentInfo
 from agentos.utils.logger import AsyncLogger
 
@@ -22,7 +22,20 @@ class TaskResult:
         self.task_id = task_id
         self.completed = False
         self.success = False
+        self.term = -1
+        self.round = 0
         self.result = ""
+
+    def update(self, term: int, round: int, result: str) -> bool:
+        if term < self.term:
+            return False
+
+        if round <= self.round:
+            return False
+
+        self.term = term
+        self.round = round
+        self.result = result
 
     def mark_complete(self, success: bool, result: str):
         self.completed = True
@@ -31,14 +44,14 @@ class TaskResult:
 
 
 class AgentGatewayServer:
-    def __init__(self, monitor_url: str):
+    def __init__(self, monitor_url: str, dbserver_url: str):
         self.monitor_url = monitor_url
+        self.dbserver_url = dbserver_url
         self.task_map: Dict[int, TaskResult] = dict()
         self.lock = asyncio.Lock()
         self.agents: Dict[str, AgentInfo] = dict()
         self.logger = AsyncLogger("gateway")
         self.lock = asyncio.Lock()
-        self.task_counter = 1
 
     async def ready(self):
         return {
@@ -47,20 +60,32 @@ class AgentGatewayServer:
 
     async def query(self, e: TaskQueryEvent):
         try:
-            # replace with db insertion
-            task_id = None
-            async with self.lock:
-                task_id = self.task_counter
-                self.task_counter += 1
-
-            agent = pick_random_agent(self.agents)
-            data = {
-                "task_id": task_id,
-                "task_name": e.task_name,
-                "task_description": e.task_description,
-            }
-            await self.logger.debug(f"query - {data}")
             async with aiohttp.ClientSession() as session:
+                agent = pick_random_agent(self.agents)
+                db_data = {
+                    "task_agent": agent.id,
+                    "task_name": e.task_name,
+                    "task_description": e.task_description,
+                }
+                task_id = None
+                async with session.post(
+                    self.dbserver_url + "/task", json=db_data
+                ) as response:
+                    assert response.status < 300
+                    body = await response.json()
+                    assert body["success"]
+                    task_id = body["task_id"]
+                    assert task_id is not None
+
+                await self.logger.debug(f"task {task_id} created")
+
+                data = {
+                    "task_id": task_id,
+                    "term": 0,
+                    "task_name": e.task_name,
+                    "task_description": e.task_description,
+                }
+                await self.logger.debug(f"query - {data}")
                 async with session.post(
                     agent.addr + "/coordinator", json=data
                 ) as response:
@@ -79,14 +104,18 @@ class AgentGatewayServer:
                 "success": False,
             }
 
-    async def task_update(self, e: TaskCompleteEvent):
+    async def task_update(self, e: TaskUpdateEvent):
         async with self.lock:
             if e.task_id not in self.task_map:
                 return {
                     "success": False,
                 }
 
-            self.task_map[e.task_id].mark_complete(e.success, e.result)
+            if e.completed:
+                self.task_map[e.task_id].mark_complete(e.success, e.result)
+            else:
+                self.task_map[e.task_id].update(e.term, e.round, e.result)
+
             return {
                 "success": True,
             }
@@ -95,17 +124,19 @@ class AgentGatewayServer:
         async with self.lock:
             if task_id not in self.task_map:
                 return {
-                    "status": "not exist",
+                    "status": TaskStatus.NON_EXIST,
                 }
 
             task_result = self.task_map[task_id]
             if not task_result.completed:
                 return {
-                    "status": "waiting",
+                    "status": TaskStatus.PENDING,
+                    "term": task_result.term,
+                    "round": task_result.round,
                 }
             else:
                 return {
-                    "status": "ok",
+                    "status": TaskStatus.COMPLETED,
                     "success": task_result.success,
                     "result": task_result.result,
                 }

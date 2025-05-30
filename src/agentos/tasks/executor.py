@@ -64,13 +64,14 @@ class SimpleTreeTaskExecutor:
     ):
         self.logger = logger
         self.task_id = task_id
+        self.round = 0
         self.node = node
         self.get_agents = get_agents
-        self.result = None
-        self.done = False
+        self.result = ""
+        self.completed = False
         self.failed = False
 
-    async def start(self):
+    async def run(self):
         generation_prompt = self.node.description
         vote_prompt = self.node.evaluation
         n_rounds = self.node.n_rounds
@@ -148,24 +149,32 @@ class SimpleTreeTaskExecutor:
             votes = [get_vote(raw_vote, outputs) for raw_vote in raw_votes]
             chosen_output = get_most_voted_output(votes, outputs)
             await self.logger.info(f"[Round {round}] voting completed...")
+            self.round += 1
 
             if round == n_rounds - 1:
                 await self.logger.info(f"[Task {self.task_id}] task completed.")
                 lower_output = chosen_output.lower()
+                self.completed = True
                 if "output:" in lower_output:
                     idx = lower_output.find("output:")
                     self.result = chosen_output[idx + len("output:\n") :].strip()
-                    return
                 else:
                     self.failed = True
                     self.result = f"Invalid output:\n{chosen_output}"
-                    return
+
+                yield
+                return
+
             else:
                 lower_output = chosen_output.lower()
                 if "plan:" in lower_output:
                     idx = lower_output.find("output:")
                     draft_plan = chosen_output[idx + len("output:\n") :].strip()
+                    self.result = draft_plan
+                    yield
                 else:
                     self.failed = True
                     self.result = f"Invalid output:\n{chosen_output}"
+                    self.completed = True
+                    yield
                     return

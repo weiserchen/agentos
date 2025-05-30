@@ -20,6 +20,10 @@ monitor_host = "127.0.0.1"
 monitor_port = 10001
 monitor_url = f"http://{monitor_host}:{monitor_port}"
 
+dbserver_host = "127.0.0.1"
+dbserver_port = 10002
+dbserver_url = f"http://{dbserver_host}:{dbserver_port}"
+
 proxy_domain = "127.0.0.1"
 proxy_host = "127.0.0.1"
 proxy_port_base = 11000
@@ -42,6 +46,7 @@ def run_proxy(id: str, domain: str, host: str, port: int):
             id,
             gateway_url,
             monitor_url,
+            dbserver_url,
             update_interval=heartbeat_interval,
             sem_cap=sem_cap,
         )
@@ -91,23 +96,40 @@ async def test_executor():
         query = "MULTITHREADED BLOCKED MATRIX MULTIPLICATION IN C++"
         task_description = get_task_description(task_name, query)
         task_evaluation = 'Given an instruction and several choices, decide which choice is most promising. Analyze each choice in detail, then conclude in the LAST LINE WITH THIS EXACT PATTERN "The best choice is {s}", where s is the integer id of the choice.'
+        n_rounds = 2
+        n_samples = 5
+        n_voters = 3
         task_node = TaskNode(
             description=task_description,
             evaluation=task_evaluation,
-            n_rounds=2,
-            n_samples=5,
-            n_voters=3,
+            n_rounds=n_rounds,
+            n_samples=n_samples,
+            n_voters=n_voters,
         )
 
         async def get_agents():
             return proxies
 
-        task_coordinator = SingleNodeCoordinator(1, task_node, get_agents)
-        await task_coordinator.start()
+        task_id = 1
+        curr_term = 0
+        task_coordinator = SingleNodeCoordinator(
+            task_id,
+            curr_term,
+            task_node,
+            get_agents,
+        )
+        round = 1
+        async for _ in task_coordinator.run():
+            assert task_coordinator.round == round
+            if task_coordinator.round != n_rounds:
+                assert not task_coordinator.completed
+            round += 1
+
         await logger.debug(f"Result: \n{task_coordinator.result}")
 
+        assert task_coordinator.completed
         assert task_coordinator.success
-        assert task_coordinator.result is not None
+        assert task_coordinator.result != ""
 
     finally:
         await logger.stop()
