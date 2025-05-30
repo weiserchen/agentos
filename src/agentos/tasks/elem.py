@@ -23,6 +23,12 @@ class TaskAction(str, Enum):
     DEFAULT = ""
 
 
+class TaskStatus(str, Enum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    ABORTED = "aborted"
+
+
 class AgentCallTaskEvent(BaseModel):
     task_id: int
     task_round: int

@@ -30,7 +30,7 @@ class TaskResult:
         self.result = result
 
 
-class RegionalGateway:
+class AgentGatewayServer:
     def __init__(self, monitor_url: str):
         self.monitor_url = monitor_url
         self.task_map: Dict[int, TaskResult] = dict()

@@ -4,7 +4,8 @@ from multiprocessing import Process
 from typing import List
 
 from agentos.agent.proxy import AgentInfo, AgentProxy
-from agentos.regional.manager import RegionalAgentMonitor, RegionalGateway
+from agentos.service.gateway import AgentGateway
+from agentos.service.monitor import AgentMonitorServer
 from agentos.utils.logger import AsyncLogger
 from agentos.utils.ready import is_url_ready
 
@@ -26,7 +27,7 @@ sem_cap = 3
 
 def run_gateway():
     try:
-        gateway = RegionalGateway(monitor_url)
+        gateway = AgentGateway(monitor_url)
         gateway.run(gateway_host, gateway_port)
     except Exception as e:
         print(f"Exception: {e}")
@@ -35,7 +36,7 @@ def run_gateway():
 
 def run_monitor():
     try:
-        monitor = RegionalAgentMonitor()
+        monitor = AgentMonitorServer()
         monitor.run(monitor_host, monitor_port)
     except Exception as e:
         print(f"Exception: {e}")
@@ -79,7 +80,8 @@ async def main():
             local_api_port = local_api_port_base + i
             proxy_url = f"http://{proxy_host}:{proxy_port_base + i}"
             proxy_process = mp.Process(
-                target=run_proxy, args=(proxy_id, proxy_domain, proxy_host, proxy_port, local_api_port)
+                target=run_proxy,
+                args=(proxy_id, proxy_domain, proxy_host, proxy_port, local_api_port),
             )
             proxies[proxy_id] = AgentInfo(
                 id=proxy_id,

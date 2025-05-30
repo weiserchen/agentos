@@ -12,6 +12,9 @@ __pycache__/
 /src/agentos/*.env
 .vscode/
 
+# sqlite
+*.db
+
 # OS-generated files
 .DS_Store
 *.env

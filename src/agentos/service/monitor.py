@@ -14,7 +14,7 @@ class AgentStatusRequest(BaseModel):
     agent_info: AgentInfo | None
 
 
-class RegionalAgentMonitor:
+class AgentMonitorServer:
     agents: Dict[str, AgentInfo]
 
     def __init__(self):

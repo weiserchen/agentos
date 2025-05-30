@@ -7,7 +7,7 @@ import aiohttp
 import pytest
 
 from agentos.agent.proxy import AgentProxy
-from agentos.regional.monitor import RegionalAgentMonitor
+from agentos.service.monitor import AgentMonitorServer
 from agentos.utils.logger import AsyncLogger
 from agentos.utils.ready import is_url_ready
 
@@ -27,7 +27,7 @@ heartbeat_interval = 1
 
 def run_monitor():
     try:
-        monitor = RegionalAgentMonitor()
+        monitor = AgentMonitorServer()
         monitor.run(monitor_host, monitor_port)
     except Exception as e:
         print(f"Exception: {e}")

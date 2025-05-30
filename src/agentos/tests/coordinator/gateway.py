@@ -7,7 +7,8 @@ import aiohttp
 import pytest
 
 from agentos.agent.proxy import AgentInfo, AgentProxy
-from agentos.regional.manager import RegionalAgentMonitor, RegionalGateway
+from agentos.service.gateway import AgentGatewayServer
+from agentos.service.monitor import AgentMonitorServer
 from agentos.utils.logger import AsyncLogger
 from agentos.utils.ready import is_url_ready
 
@@ -28,7 +29,7 @@ sem_cap = 3
 
 def run_gateway():
     try:
-        gateway = RegionalGateway(monitor_url)
+        gateway = AgentGatewayServer(monitor_url)
         gateway.run(gateway_host, gateway_port)
     except Exception as e:
         print(f"Exception: {e}")
@@ -37,7 +38,7 @@ def run_gateway():
 
 def run_monitor():
     try:
-        monitor = RegionalAgentMonitor()
+        monitor = AgentMonitorServer()
         monitor.run(monitor_host, monitor_port)
     except Exception as e:
         print(f"Exception: {e}")

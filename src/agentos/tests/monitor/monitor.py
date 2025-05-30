@@ -1,12 +1,12 @@
-import asyncio
 import multiprocessing as mp
 
 import aiohttp
 import pytest
 
-from agentos.regional.monitor import RegionalAgentMonitor
+from agentos.service.monitor import AgentMonitorServer
+from agentos.utils.ready import is_url_ready
 
-monitor = RegionalAgentMonitor()
+monitor = AgentMonitorServer()
 monitor_host = "127.0.0.1"
 monitor_port = 10001
 monitor_url = f"http://{monitor_host}:{monitor_port}"
@@ -22,19 +22,9 @@ async def test_agent_monitor():
         monitor_process = mp.Process(target=run_monitor)
         monitor_process.start()
 
-        MAX_RETRY = 10
-        async with aiohttp.ClientSession() as session:
-            for i in range(MAX_RETRY):
-                try:
-                    async with session.get(monitor_url + "/ready") as response:
-                        assert response.status < 300
-                        break
-                except aiohttp.ClientConnectionError as e:
-                    if i == MAX_RETRY - 1:
-                        raise e
-                    else:
-                        await asyncio.sleep(0.5)
+        assert await is_url_ready(monitor_url)
 
+        async with aiohttp.ClientSession() as session:
             async with session.get(monitor_url + "/agent/list") as response:
                 assert response.status < 300
                 body = await response.json()

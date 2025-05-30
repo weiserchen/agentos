@@ -5,7 +5,7 @@ from typing import List
 import pytest
 
 from agentos.agent.proxy import AgentInfo, AgentProxy
-from agentos.regional.manager import RegionalAgentMonitor
+from agentos.service.monitor import AgentMonitorServer
 from agentos.tasks.coordinator import SingleNodeCoordinator
 from agentos.tasks.elem import TaskNode
 from agentos.tasks.generate_task import get_task_description
@@ -29,7 +29,7 @@ sem_cap = 3
 
 def run_monitor():
     try:
-        monitor = RegionalAgentMonitor()
+        monitor = AgentMonitorServer()
         monitor.run(monitor_host, monitor_port)
     except Exception as e:
         print(f"Exception: {e}")
