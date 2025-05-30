@@ -2,7 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import Any, Dict
 
-import aiohttp
+from httpx import Timeout, Limits 
 import uvicorn
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError, ResponseValidationError
@@ -47,19 +47,22 @@ class Agent:
         self.temp = temp
         self.max_tokens = max_tokens
 
-    async def call(self, prompt: str, stop):
-        client = None
-        if self.api_base == "":
-            client = AsyncOpenAI(
-                api_key=self.api_key,
-            )
-        else:
-            client = AsyncOpenAI(
+        timeout = Timeout(connect=30.0, read=600.0, write=None, pool=None)
+
+        if run_local:
+            self.client = AsyncOpenAI(
                 base_url=self.api_base,
                 api_key=self.api_key,
+                timeout=timeout,
+            )
+        else:
+            self.client = AsyncOpenAI(
+                api_key=self.api_key,
+                timeout=timeout,
             )
 
-        res = await client.chat.completions.create(
+    async def call(self, prompt: str, stop):
+        res = await self.client.chat.completions.create(
             model=self.api_model,
             temperature=self.temp,
             max_tokens=self.max_tokens,
@@ -167,7 +170,7 @@ class AgentProxy:
                     "success": coord.success,
                     "result": coord.result,
                 }
-                resp = await http_post(self.monitor_url + "/agent", data)
+                resp = await http_post(self.gateway_url + "/task/update", data)
                 assert resp["success"], f"run_coordinator - failed to update agent status: {resp}"
                 body = resp["body"]
                 if not body["success"]:

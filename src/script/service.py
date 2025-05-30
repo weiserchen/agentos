@@ -25,7 +25,7 @@ heartbeat_interval = 2
 sem_cap = 10
 queue_cap = 1000
 load_balancing = "random"  # Options: "random", "least_loaded"
-scheduling_policy = "fifo"  # Options: "fifo", "priority"
+scheduling_policy = "priority"  # Options: "fifo", "priority"
 
 def run_gateway():
     try:

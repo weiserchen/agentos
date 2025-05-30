@@ -164,119 +164,260 @@ class SimpleTreeTaskExecutor:
         node: TaskNode,
         get_agents: Callable[[], Awaitable[Dict[str, AgentInfo]]],
         load_balancing: str = "random",
-        voting_starategy: str = "naive", # "naive" or "early_majority"
+        voting_strategy: str = "early_majority"
     ):
         self.logger = logger
         self.task_id = task_id
         self.node = node
         self.get_agents = get_agents
-        self.result = None
-        self.done = False
-        self.failed = False
         self.load_balancing = load_balancing
+        self.voting_strategy = voting_strategy
+
+        self.result: str | None = None
+        self.failed = False
+
+    async def _generate_samples(
+        self,
+        prompt: str,
+        stop: str | None,
+        n_samples: int,
+        round_idx: int,
+    ) -> list[str]:
+        workers = pick_k_agents(await self.get_agents(), n_samples, self.load_balancing)
+
+        factories = [
+            lambda b={
+                "task_id": self.task_id,
+                "task_round": round_idx,
+                "task_action": TaskAction.GENERATION,
+                "task_description": prompt,
+                "task_stop": stop,
+            }, addr=w.addr: http_post(addr + "/agent/call", b)
+            for w in workers
+        ]
+
+        results = await asyncio.gather(
+            *(f() for f in factories), return_exceptions=True
+        )
+
+        outputs: list[str] = []
+        for r in results:
+            if isinstance(r, Exception) or not r.get("success"):
+                self.failed = True
+                self.result = f"Worker Failure: {r.get('body', {}).get('error', 'Unknown Error')}"
+                return []
+            outputs.append(r["body"]["result"])
+        return outputs
+
+    async def _gather_votes(
+        self,
+        vote_prompt: str,
+        outputs: list[str],
+        n_voters: int,
+        round_idx: int,
+    ) -> list[int]:
+        voters = pick_k_agents(await self.get_agents(), n_voters, self.load_balancing)
+        factories = [
+            lambda b={
+                "task_id": self.task_id,
+                "task_round": round_idx,
+                "task_action": TaskAction.VOTING,
+                "task_description": vote_prompt,
+                "task_stop": None,
+            }, addr=v.addr: http_post(addr + "/agent/call", b)
+            for v in voters
+        ]
+
+        if self.voting_strategy == "naive":
+            return await gather_votes_naive(factories, outputs)
+        elif self.voting_strategy == "early_majority":
+            majority = n_voters // 2 + 1
+            return await gather_votes_until_majority(factories, outputs, majority)
+        else:
+            raise ValueError(f"Unknown voting strategy: {self.voting_strategy}")
 
     async def start(self):
-        generation_prompt = self.node.description
-        vote_prompt = self.node.evaluation
-        n_rounds = self.node.n_rounds
-        n_samples = self.node.n_samples
-        n_voters = self.node.n_voters
+        gen_prompt_base = self.node.description
+        vote_prompt_base = self.node.evaluation
+        n_rounds, n_samples, n_voters = (
+            self.node.n_rounds,
+            self.node.n_samples,
+            self.node.n_voters,
+        )
 
-        draft_plan = None
-        for round in range(n_rounds):
-            if round == n_rounds - 1:
-                stop = None
-            else:
-                stop = "\nOutput:\n"
+        draft_plan: str | None = None
 
-            await self.logger.info(f"[Round {round}] starting...")
+        for r in range(n_rounds):
+            await self.logger.info(f"[Round {r}] start")
 
-            current_passage_generation_prompt = generation_prompt
-            if draft_plan is not None:
-                current_passage_generation_prompt = (
-                    f"{generation_prompt}\nGiven Hints: {draft_plan}"
-                )
-
-            await self.logger.info(f"[Round {round}] generating samples...")
-            workers: List[AgentInfo] = pick_k_agents(
-                await self.get_agents(),
-                n_samples,
-                self.load_balancing
+            stop_token = None if r == n_rounds - 1 else "\nOutput:\n"
+            gen_prompt = (
+                f"{gen_prompt_base}\nGiven Hints: {draft_plan}"
+                if draft_plan
+                else gen_prompt_base
             )
-            futures = []
-            for worker in workers:
-                body = {
-                    "task_id": self.task_id,
-                    "task_round": round,
-                    "task_action": TaskAction.GENERATION,
-                    "task_description": current_passage_generation_prompt,
-                    "task_stop": stop,
-                }
-                futures.append(http_post(worker.addr + "/agent/call", body))
 
-            output_results = await asyncio.gather(*futures)
-            await self.logger.info(f"[Round {round}] samples generated...")
-            outputs = []
-            for result in output_results:
-                if not result["success"]:
-                    self.failed = True
-                    error_msg = result.get("body", {}).get("error", "Unknown Error")
-                    self.result = f"Worker Failure: {error_msg}"
-                    return
-                outputs.append(result["body"]["result"])
+            outputs = await self._generate_samples(gen_prompt, stop_token, n_samples, r)
+            if self.failed:
+                return
+            await self.logger.info(f"[Round {r}] {len(outputs)} samples generated")
 
-            # TODO: remove failed workers
-
-            await self.logger.info(f"[Round {round}] voting started...")
-            vote_prompt = wrap_vote_prompt(outputs, vote_prompt)
-            voters = pick_k_agents(await self.get_agents(), n_voters, self.load_balancing)
-            futures = []
-            for voter in voters:
-                body = {
-                    "task_id": self.task_id,
-                    "task_round": round,
-                    "task_action": TaskAction.VOTING,
-                    "task_description": vote_prompt,
-                    "task_stop": None,
-                }
-                futures.append(http_post(voter.addr + "/agent/call", body))
-
-            # TODO: remove failed voters
-
-            raw_vote_results = await asyncio.gather(*futures)
-            raw_votes = []
-            for result in raw_vote_results:
-                if not result["success"]:
-                    self.failed = True
-                    error_msg = result.get("body", {}).get("error", "Unknown Error")
-                    self.result = f"Voter Failure: {error_msg}"
-                    return
-                raw_votes.append(result["body"]["result"])
-
-            votes = [get_vote(raw_vote, outputs) for raw_vote in raw_votes]
+            vote_prompt = wrap_vote_prompt(outputs, vote_prompt_base)
+            votes = await self._gather_votes(vote_prompt, outputs, n_voters, r)
             chosen_output = get_most_voted_output(votes, outputs)
-            await self.logger.info(f"[Round {round}] voting completed...")
+            await self.logger.info(f"[Round {r}] voting finished")
 
-            if round == n_rounds - 1:
-                await self.logger.info(f"[Task {self.task_id}] task completed.")
+            if r == n_rounds - 1:
                 lower_output = chosen_output.lower()
                 if "output:" in lower_output:
                     idx = lower_output.find("output:")
-                    self.result = chosen_output[idx + len("output:\n") :].strip()
+                    self.result = chosen_output[idx + len("output:") :].strip()
                     return
                 else:
-                    self.failed = True
-                    self.result = f"Invalid output:\n{chosen_output}"
+                    # self.failed = True
+                    # self.result = f"Invalid output:\n{chosen_output}"
+                    # return
+                    self.result = chosen_output.strip() # Not catastrophic to return the whole output
                     return
+
+            lower_output = chosen_output.lower()
+            if "plan:" in lower_output:
+                idx = lower_output.find("plan:")
+                draft_plan = chosen_output[idx + len("plan:") :].strip()
+            elif "plan" in lower_output[:20]:
+                idx = lower_output[:20].find("plan")
+                draft_plan = chosen_output[idx + len("plan") :].strip()
             else:
-                lower_output = chosen_output.lower()
-                if "plan:" in lower_output:
-                    idx = lower_output.find("plan:")
-                    draft_plan = chosen_output[idx + len("plan:") :].strip()
-                elif "plan" in lower_output[:20]:
-                    idx = lower_output[:20].find("plan")
-                    draft_plan = chosen_output[idx + len("plan") :].strip()
-                else:
-                    self.failed = True
-                    self.result = f"Invalid plan:\n{chosen_output}"
-                    return
+                self.failed = True
+                self.result = f"Invalid plan:\n{chosen_output}"
+                return
+
+# class SimpleTreeTaskExecutor:
+#     def __init__(
+#         self,
+#         logger: AsyncLogger,
+#         task_id: int,
+#         node: TaskNode,
+#         get_agents: Callable[[], Awaitable[Dict[str, AgentInfo]]],
+#         load_balancing: str = "random",
+#         voting_starategy: str = "naive", # "naive" or "early_majority"
+#     ):
+#         self.logger = logger
+#         self.task_id = task_id
+#         self.node = node
+#         self.get_agents = get_agents
+#         self.result = None
+#         self.done = False
+#         self.failed = False
+#         self.load_balancing = load_balancing
+
+#     async def start(self):
+#         generation_prompt = self.node.description
+#         vote_prompt = self.node.evaluation
+#         n_rounds = self.node.n_rounds
+#         n_samples = self.node.n_samples
+#         n_voters = self.node.n_voters
+
+#         draft_plan = None
+#         for round in range(n_rounds):
+#             if round == n_rounds - 1:
+#                 stop = None
+#             else:
+#                 stop = "\nOutput:\n"
+
+#             await self.logger.info(f"[Round {round}] starting...")
+
+#             current_passage_generation_prompt = generation_prompt
+#             if draft_plan is not None:
+#                 current_passage_generation_prompt = (
+#                     f"""{generation_prompt}
+#                     Given Hints: {draft_plan}
+#                     To reiterate, YOU MUST precede your Plan with "PLAN:" and your output with "OUTPUT:".
+#                     """
+#                 )
+
+#             await self.logger.info(f"[Round {round}] generating samples...")
+#             workers: List[AgentInfo] = pick_k_agents(
+#                 await self.get_agents(),
+#                 n_samples,
+#                 self.load_balancing
+#             )
+#             futures = []
+#             for worker in workers:
+#                 body = {
+#                     "task_id": self.task_id,
+#                     "task_round": round,
+#                     "task_action": TaskAction.GENERATION,
+#                     "task_description": current_passage_generation_prompt,
+#                     "task_stop": stop,
+#                 }
+#                 futures.append(http_post(worker.addr + "/agent/call", body))
+
+#             output_results = await asyncio.gather(*futures)
+#             await self.logger.info(f"[Round {round}] samples generated...")
+#             outputs = []
+#             for result in output_results:
+#                 if not result["success"]:
+#                     self.failed = True
+#                     error_msg = result.get("body", {}).get("error", "Unknown Error")
+#                     self.result = f"Worker Failure: {error_msg}"
+#                     return
+#                 outputs.append(result["body"]["result"])
+
+#             # TODO: remove failed workers
+
+#             await self.logger.info(f"[Round {round}] voting started...")
+#             vote_prompt = wrap_vote_prompt(outputs, vote_prompt)
+#             voters = pick_k_agents(await self.get_agents(), n_voters, self.load_balancing)
+#             futures = []
+#             for voter in voters:
+#                 body = {
+#                     "task_id": self.task_id,
+#                     "task_round": round,
+#                     "task_action": TaskAction.VOTING,
+#                     "task_description": vote_prompt,
+#                     "task_stop": None,
+#                 }
+#                 futures.append(http_post(voter.addr + "/agent/call", body))
+
+#             # TODO: remove failed voters
+
+#             raw_vote_results = await asyncio.gather(*futures)
+#             raw_votes = []
+#             for result in raw_vote_results:
+#                 if not result["success"]:
+#                     self.failed = True
+#                     error_msg = result.get("body", {}).get("error", "Unknown Error")
+#                     self.result = f"Voter Failure: {error_msg}"
+#                     return
+#                 raw_votes.append(result["body"]["result"])
+
+#             votes = [get_vote(raw_vote, outputs) for raw_vote in raw_votes]
+#             chosen_output = get_most_voted_output(votes, outputs)
+#             await self.logger.info(f"[Round {round}] voting completed...")
+
+#             if round == n_rounds - 1:
+#                 await self.logger.info(f"[Task {self.task_id}] task completed.")
+#                 lower_output = chosen_output.lower()
+#                 if "output:" in lower_output:
+#                     idx = lower_output.find("output:")
+#                     self.result = chosen_output[idx + len("output:\n") :].strip()
+#                     return
+#                 else:
+#                     # self.failed = True
+#                     # self.result = f"Invalid output:\n{chosen_output}"
+#                     # return
+#                     self.result = chosen_output.strip() # Not catastrophic to return the whole output
+#                     return
+#             else:
+#                 lower_output = chosen_output.lower()
+#                 if "plan:" in lower_output:
+#                     idx = lower_output.find("plan:")
+#                     draft_plan = chosen_output[idx + len("plan:") :].strip()
+#                 elif "plan" in lower_output[:20]:
+#                     idx = lower_output[:20].find("plan")
+#                     draft_plan = chosen_output[idx + len("plan") :].strip()
+#                 else:
+#                     self.failed = True
+#                     self.result = f"Invalid plan:\n{chosen_output}"
+#                     return

@@ -56,14 +56,14 @@ async def http_post(url: str, body: Dict[str, Any]) -> Dict[str, Any]:
         result["error"]   = repr(e)      # bubble up real cause
     return result
 
-async def http_get(url: str) -> Dict[str, Any]:
+async def http_get(url: str, params: Dict | None = None) -> Dict[str, Any]:
     """
     JSON GET helper that reuses one ClientSession for the whole process.
     """
     session = await _get_session()
     result: Dict[str, Any] = {}
     try:
-        async with session.get(url) as resp:
+        async with session.get(url, params=params) as resp:
             result["status"]  = resp.status
             result["body"]    = await resp.json()
             result["success"] = resp.status < 300

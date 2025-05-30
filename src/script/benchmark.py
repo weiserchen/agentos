@@ -9,6 +9,7 @@ import aiohttp
 
 from agentos.utils.logger import AsyncLogger
 from .benchmark_tasks import benchmark_tasks
+from agentos.tasks.utils import http_post, http_get 
 
 random.seed(42)
 
@@ -33,21 +34,16 @@ async def execute_task(logger: AsyncLogger) -> None:
 
     t_start = time.perf_counter()
 
-    async with aiohttp.ClientSession() as session:
-        REQUEST_BODY = benchmark_tasks[random.randint(0, len(benchmark_tasks)-1)]
-        async with session.post(gateway_url + "/query", json=REQUEST_BODY) as resp:
-            assert resp.status < 300
-            body = await resp.json()
-            task_id = body["task_id"]
+    REQUEST_BODY = benchmark_tasks[random.randint(0, len(benchmark_tasks) - 1)]
+    resp = await http_post(f"{gateway_url}/query", REQUEST_BODY)
+    assert resp["success"], f"Failed to submit task: {resp['result']}"
+    task_id = resp["body"]["task_id"]
 
     while True:
         await asyncio.sleep(POLL_INTERVAL)
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                gateway_url + "/task/status", params={"task_id": task_id}
-            ) as resp:
-                assert resp.status < 300
-                body = await resp.json()
+        resp = await http_get(f"{gateway_url}/task/status", params = {"task_id": task_id})
+        assert resp["success"]
+        body = resp["body"]
 
         if body["status"] == "ok":
             if body["success"] is False:

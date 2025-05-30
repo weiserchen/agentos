@@ -24,7 +24,7 @@ async def main():
                 "n_samples": 5,
                 "n_voters": 5
             }
-        ] * 3
+        ] * 1
 
         async def execute_task(data):
             task_id = None
