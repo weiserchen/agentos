@@ -19,6 +19,10 @@ monitor_host = "127.0.0.1"
 monitor_port = 10001
 monitor_url = f"http://{monitor_host}:{monitor_port}"
 
+dbserver_host = "127.0.0.1"
+dbserver_port = 10002
+dbserver_url = f"http://{dbserver_host}:{dbserver_port}"
+
 proxy_domain = "127.0.0.1"
 proxy_host = "127.0.0.1"
 proxy_port_base = 11000
@@ -40,6 +44,7 @@ def run_proxy(id: str, domain: str, host: str, port: int):
             id,
             gateway_url,
             monitor_url,
+            dbserver_url,
             update_interval=heartbeat_interval,
         )
         proxy.run(domain, host, port)
@@ -82,8 +87,6 @@ async def test_agent_monitor_proxy():
             assert await is_url_ready(logger, proxy_url)
 
         await logger.info("proxies started.")
-
-        await asyncio.sleep(3)
 
         MAX_RETRY = 3
         for i in range(MAX_RETRY):

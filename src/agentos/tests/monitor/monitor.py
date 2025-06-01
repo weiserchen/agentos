@@ -4,6 +4,7 @@ import aiohttp
 import pytest
 
 from agentos.service.monitor import AgentMonitorServer
+from agentos.utils.logger import AsyncLogger
 from agentos.utils.ready import is_url_ready
 
 monitor = AgentMonitorServer()
@@ -19,10 +20,13 @@ def run_monitor():
 @pytest.mark.asyncio
 async def test_agent_monitor():
     try:
+        logger = AsyncLogger("pytest")
+        await logger.start()
+
         monitor_process = mp.Process(target=run_monitor)
         monitor_process.start()
 
-        assert await is_url_ready(monitor_url)
+        assert await is_url_ready(logger, monitor_url)
 
         async with aiohttp.ClientSession() as session:
             async with session.get(monitor_url + "/agent/list") as response:
@@ -116,5 +120,6 @@ async def test_agent_monitor():
                     assert deleted_id not in agents
 
     finally:
+        await logger.stop()
         monitor_process.terminate()
         monitor_process.join()

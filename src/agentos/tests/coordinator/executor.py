@@ -111,19 +111,29 @@ async def test_executor():
             return proxies
 
         task_id = 1
+        curr_round = 0
         curr_term = 0
+        curr_result = ""
         task_coordinator = SingleNodeCoordinator(
             task_id,
+            curr_round,
             curr_term,
+            curr_result,
             task_node,
             get_agents,
         )
-        round = 1
+
         async for _ in task_coordinator.run():
-            assert task_coordinator.round == round
-            if task_coordinator.round != n_rounds:
+            assert task_coordinator.round == curr_round
+            assert task_coordinator.result != curr_result
+            curr_round += 1
+            curr_result = task_coordinator.result
+            if task_coordinator.round == n_rounds - 1:
+                assert task_coordinator.success
+                assert task_coordinator.completed
+            else:
+                assert not task_coordinator.success
                 assert not task_coordinator.completed
-            round += 1
 
         await logger.debug(f"Result: \n{task_coordinator.result}")
 

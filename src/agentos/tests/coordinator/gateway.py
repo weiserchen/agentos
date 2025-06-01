@@ -12,6 +12,7 @@ from agentos.service.dbserver import AgentDatabaseServer
 from agentos.service.gateway import AgentGatewayServer
 from agentos.service.monitor import AgentMonitorServer
 from agentos.tasks.elem import TaskStatus
+from agentos.tasks.task_descriptions import default_tasks
 from agentos.utils.logger import AsyncLogger
 from agentos.utils.ready import is_url_ready
 
@@ -129,9 +130,11 @@ async def test_gateway():
         assert await is_url_ready(logger, gateway_url)
 
         async def execute_task():
+            task_name = "code_generation"
+            task_description = "MULTITHREADED BLOCKED MATRIX MULTIPLICATION IN C++"
             data = {
-                "task_name": "code_generation",
-                "task_description": "MULTITHREADED BLOCKED MATRIX MULTIPLICATION IN C++",
+                "task_name": task_name,
+                "task_description": task_description,
             }
 
             task_id = None
@@ -177,28 +180,20 @@ async def test_gateway():
                 data = {
                     "task_id": task_id,
                 }
+                n_rounds = default_tasks[task_name]["n_rounds"]
                 async with session.get(dbserver_url + "/task", params=data) as response:
                     assert response.status < 300
                     body = await response.json()
                     assert body["success"]
+                    assert body["term"] == 0
+                    assert body["round"] == n_rounds - 1
+                    assert body["task_name"] == task_name
+                    assert body["task_description"] == task_description
                     assert body["task_status"] == TaskStatus.COMPLETED
                     assert body["task_result"] != ""
 
-                async with session.get(
-                    dbserver_url + "/task/progress/list", params=data
-                ) as response:
-                    assert response.status < 300
-                    body = await response.json()
-                    assert body["success"]
-                    progress_list = body["progress_list"]
-                    prev_round = -1
-                    for progress in progress_list:
-                        assert progress["round"] > prev_round
-                        prev_round = progress["round"]
-                        assert progress["result"] != ""
-
         futures = []
-        task_num = 1
+        task_num = 2
         for i in range(task_num):
             futures.append(execute_task())
 

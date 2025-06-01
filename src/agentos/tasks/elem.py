@@ -40,9 +40,11 @@ class AgentCallTaskEvent(BaseModel):
 
 class CoordinatorTaskEvent(BaseModel):
     task_id: int
+    round: int
     term: int
     task_name: str
     task_description: str
+    task_result: str
 
 
 class TaskQueryEvent(BaseModel):

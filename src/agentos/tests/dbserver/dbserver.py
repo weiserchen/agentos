@@ -9,7 +9,8 @@ from agentos.tasks.elem import TaskStatus
 from agentos.utils.logger import AsyncLogger
 from agentos.utils.ready import is_url_ready
 
-db_file = "pytest.db"
+script_dir = os.path.dirname(os.path.abspath(__file__))
+db_file = os.path.join(script_dir, "pytest.db")
 dbserver = AgentDatabaseServer(db_file)
 dbserver_host = "127.0.0.1"
 dbserver_port = 10002
@@ -35,6 +36,10 @@ async def test_agent_dbserver():
             task_num = 10
             test_agent = "pytest"
             curr_term = 0
+            default_round = -1
+            default_term = 0
+            default_result = ""
+            default_status = TaskStatus.PENDING
             tasks = []
             for i in range(task_num):
                 task = {
@@ -51,6 +56,10 @@ async def test_agent_dbserver():
                     assert task_id is not None
 
                 task["task_id"] = task_id
+                task["round"] = default_round
+                task["term"] = default_term
+                task["task_status"] = default_status
+                task["task_result"] = default_result
                 tasks.append(task)
 
             data = {
@@ -72,12 +81,13 @@ async def test_agent_dbserver():
                     body = await response.json()
                     assert body["success"], body["err"]
 
-                    assert body["term"] == curr_term
+                    assert body["round"] == task["round"]
+                    assert body["term"] == task["term"]
                     assert body["task_agent"] == task["task_agent"]
                     assert body["task_status"] == TaskStatus.PENDING
                     assert body["task_name"] == task["task_name"]
                     assert body["task_description"] == task["task_description"]
-                    assert body["task_result"] == ""
+                    assert body["task_result"] == task["task_result"]
 
             data = {
                 "task_agent": "non-exist agent",
@@ -107,12 +117,13 @@ async def test_agent_dbserver():
                     db_task = db_tasks[i]
 
                     assert db_task["task_id"] == task["task_id"]
-                    assert db_task["term"] == curr_term
+                    assert db_task["round"] == task["round"]
+                    assert db_task["term"] == task["term"]
                     assert db_task["task_agent"] == task["task_agent"]
                     assert db_task["task_status"] == TaskStatus.PENDING
                     assert db_task["task_name"] == task["task_name"]
                     assert db_task["task_description"] == task["task_description"]
-                    assert db_task["task_result"] == ""
+                    assert db_task["task_result"] == task["task_result"]
 
             curr_round = 0
             # update task progress (round 0)
@@ -123,17 +134,18 @@ async def test_agent_dbserver():
                     "task_id": task["task_id"],
                     "round": curr_round,
                     "term": curr_term,
-                    "result": task["task_result"],
+                    "task_status": TaskStatus.PENDING,
+                    "task_result": task["task_result"],
                 }
-                async with session.post(
-                    dbserver_url + "/task/progress", json=data
+                async with session.put(
+                    dbserver_url + "/task/status", json=data
                 ) as response:
                     assert response.status < 300
                     body = await response.json()
                     assert body["success"]
 
             # update term
-            prev_term = 0
+            prev_term = -1
             curr_term = 1
 
             # (failed) update task progress
@@ -143,10 +155,11 @@ async def test_agent_dbserver():
                     "task_id": task["task_id"],
                     "round": curr_round,
                     "term": prev_term,
-                    "result": task["task_result"],
+                    "task_status": task["task_status"],
+                    "task_result": task["task_result"],
                 }
-                async with session.post(
-                    dbserver_url + "/task/progress", json=data
+                async with session.put(
+                    dbserver_url + "/task/status", json=data
                 ) as response:
                     assert response.status < 300
                     body = await response.json()
@@ -162,42 +175,26 @@ async def test_agent_dbserver():
                     "task_id": task["task_id"],
                     "round": curr_round,
                     "term": curr_term,
-                    "result": task["task_result"],
+                    "task_status": task["task_status"],
+                    "task_result": task["task_result"],
                 }
-                async with session.post(
-                    dbserver_url + "/task/progress", json=data
+                async with session.put(
+                    dbserver_url + "/task/status", json=data
                 ) as response:
                     assert response.status < 300
                     body = await response.json()
                     assert body["success"]
 
-            # check progress list
-            for i in range(task_num):
-                data = {
-                    "task_id": task["task_id"],
-                }
-                async with session.get(
-                    dbserver_url + "/task/progress/list", params=data
-                ) as response:
-                    assert response.status < 300
-                    body = await response.json()
-                    assert body["success"]
+            curr_round = 2
 
-                    progress_list = body["progress_list"]
-                    prev_round = -1
-                    for progress in progress_list:
-                        # unique and ascending
-                        assert progress["round"] > prev_round
-                        assert progress["term"] is not None
-                        assert progress["result"] is not None
-
-            # (successful) mark all task as completed
+            # mark all task as completed (round 2)
             for i in range(task_num):
                 task = tasks[i]
                 task["task_status"] = TaskStatus.COMPLETED
                 task["task_result"] = f"task {i} completed"
                 data = {
                     "task_id": task["task_id"],
+                    "round": curr_round,
                     "term": curr_term,
                     "task_status": task["task_status"],
                     "task_result": task["task_result"],
@@ -219,18 +216,37 @@ async def test_agent_dbserver():
                     body = await response.json()
                     assert body["success"], body["err"]
 
+                    assert body["round"] == curr_round
                     assert body["term"] == curr_term
                     assert body["task_agent"] == task["task_agent"]
-                    assert body["task_status"] == TaskStatus.COMPLETED
+                    assert body["task_status"] == task["task_status"]
                     assert body["task_name"] == task["task_name"]
                     assert body["task_description"] == task["task_description"]
                     assert body["task_result"] == task["task_result"]
 
-            # (failed) update task status
+            # (failed) update task status (expired term)
             for i in range(task_num):
                 data = {
                     "task_id": task["task_id"],
+                    "round": curr_round,
                     "term": prev_term,
+                    "task_status": TaskStatus.ABORTED,
+                    "task_result": f"task {i} aborted",
+                }
+                async with session.put(
+                    dbserver_url + "/task/status", json=data
+                ) as response:
+                    assert response.status < 300
+                    body = await response.json()
+                    assert not body["success"]
+                    assert body["err"] is not None
+
+            # (failed) update task status (not pending task)
+            for i in range(task_num):
+                data = {
+                    "task_id": task["task_id"],
+                    "round": curr_round,
+                    "term": curr_term,
                     "task_status": TaskStatus.ABORTED,
                     "task_result": f"task {i} aborted",
                 }
@@ -244,6 +260,6 @@ async def test_agent_dbserver():
 
     finally:
         await logger.stop()
+        os.remove(db_file)
         dbserver_process.terminate()
         dbserver_process.join()
-        os.remove(db_file)

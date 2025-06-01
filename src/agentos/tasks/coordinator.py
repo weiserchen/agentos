@@ -9,17 +9,20 @@ class SingleNodeCoordinator:
     def __init__(
         self,
         task_id: int,
+        round: int,
         term: int,
+        result: str,
         task_node: TaskNode,
         get_agents: Callable[[], Awaitable[Dict[str, AgentInfo]]],
     ):
         self.task_id = task_id
+        self.round = round
+        # used by proxy
         self.term = term
-        self.round = 0
+        self.result = result
         self.task_node = task_node
         self.get_agents = get_agents
         self.logger = AsyncLogger(f"task-{task_id}-coordinator")
-        self.result = None
         self.success = False
         self.completed = False
 
@@ -29,11 +32,17 @@ class SingleNodeCoordinator:
             executor = SimpleTreeTaskExecutor(
                 self.logger,
                 self.task_id,
+                self.round,
+                self.result,
                 self.task_node,
                 self.get_agents,
             )
             async for _ in executor.run():
-                self.success = not executor.failed
+                if executor.round == self.task_node.n_rounds - 1:
+                    self.success = not executor.failed
+                else:
+                    self.success = False
+
                 self.round = executor.round
                 self.result = executor.result
                 self.completed = executor.completed

@@ -23,6 +23,7 @@ from agentos.tasks.coordinator import SingleNodeCoordinator
 from agentos.tasks.elem import AgentCallTaskEvent, CoordinatorTaskEvent, TaskStatus
 from agentos.tasks.executor import AgentInfo
 from agentos.tasks.generate_task import get_task_node
+from agentos.tasks.utils import http_post_with_exception, http_put_with_exception
 from agentos.utils.logger import AsyncLogger
 
 
@@ -100,53 +101,6 @@ class AgentProxy:
         self.semaphore = asyncio.Semaphore(sem_cap)
         self.logger = AsyncLogger(id)
 
-    def run(self, domain: str, host: str, port: int):
-        self.my_url = f"http://{domain}:{port}"
-        router = APIRouter()
-        router.get("/ready")(self.ready)
-        router.get("/membership/view")(self.membership_view)
-        router.post("/coordinator")(self.handle_coordinator)
-        router.post("/agent/call")(self.call_agent)
-        app = FastAPI(lifespan=self.lifespan)
-        app.include_router(router)
-
-        @app.exception_handler(RequestValidationError)
-        async def validation_exception_handler(
-            request: Request, exc: RequestValidationError
-        ):
-            await self.logger.error(
-                f"422 Validation Error on {request.method} {request.url}"
-            )
-            await self.logger.error(f"Detail: {exc.errors()}")
-            await self.logger.error(f"Body: {exc.body}")
-            return JSONResponse(
-                status_code=422,
-                content={"detail": exc.errors()},
-            )
-
-        @app.exception_handler(ResponseValidationError)
-        async def response_validation_exception_handler(
-            request: Request, exc: ResponseValidationError
-        ):
-            await self.logger.error(
-                f"500 Response Validation Error on {request.method} {request.url}"
-            )
-            await self.logger.error(f"Detail: {exc.errors()}")
-            return JSONResponse(
-                status_code=500,
-                content={"detail": exc.errors()},
-            )
-
-        uvicorn.run(app, host=host, port=port)
-
-    @asynccontextmanager
-    async def lifespan(self, app: FastAPI):
-        asyncio.create_task(self.update_membership())
-        asyncio.create_task(self.execute_task())
-        await self.logger.start()
-        yield
-        await self.logger.stop()
-
     async def ready(self):
         return {
             "status": "proxy ok",
@@ -157,41 +111,20 @@ class AgentProxy:
             try:
                 async for _ in coord.run():
                     if self.persistence:
-                        progress_data = {
+                        status_data = {
                             "task_id": coord.task_id,
                             "round": coord.round,
                             "term": coord.term,
-                            "result": coord.result,
+                            "task_status": TaskStatus.COMPLETED
+                            if coord.completed
+                            else TaskStatus.PENDING,
+                            "task_result": coord.result,
                         }
-                        async with aiohttp.ClientSession() as session:
-                            async with session.post(
-                                self.dbserver_url + "/task/progress", json=progress_data
-                            ) as response:
-                                assert response.status < 300, (
-                                    f"db progress update - error status code: {response.status} - {progress_data}"
-                                )
-                                body = await response.json()
-                                assert body["success"], (
-                                    f"db progress update - request not successful - {body['err']}"
-                                )
-
-                            if coord.completed:
-                                status_data = {
-                                    "task_id": coord.task_id,
-                                    "term": coord.term,
-                                    "task_status": TaskStatus.COMPLETED,
-                                    "task_result": coord.result,
-                                }
-                                async with session.put(
-                                    self.dbserver_url + "/task/status", json=status_data
-                                ) as response:
-                                    assert response.status < 300, (
-                                        f"db task status update - error status code: {response.status} - {status_data}"
-                                    )
-                                    body = await response.json()
-                                    assert body["success"], (
-                                        f"db task status update - request not successful - {body['err']}"
-                                    )
+                        await http_put_with_exception(
+                            url=self.dbserver_url + "/task/status",
+                            data=status_data,
+                            name="db task status",
+                        )
 
                     gw_data = {
                         "task_id": coord.task_id,
@@ -201,17 +134,11 @@ class AgentProxy:
                         "success": coord.success,
                         "result": coord.result,
                     }
-                    async with aiohttp.ClientSession() as session:
-                        async with session.post(
-                            self.gateway_url + "/task/update", json=gw_data
-                        ) as response:
-                            assert response.status < 300, (
-                                f"gateway update - error status code: {response.status} - {gw_data}"
-                            )
-                            body = await response.json()
-                            assert body["success"], (
-                                f"gateway update - request not successful - {body['err']}"
-                            )
+                    await http_post_with_exception(
+                        url=self.gateway_url + "/task/update",
+                        data=gw_data,
+                        name="gateway",
+                    )
 
             except Exception as e:
                 await self.logger.error(
@@ -235,7 +162,9 @@ class AgentProxy:
                     )
                     self.coord_map[e.task_id] = SingleNodeCoordinator(
                         e.task_id,
+                        e.round,
                         e.term,
+                        e.task_result,
                         task_node,
                         get_agents,
                     )
@@ -254,7 +183,9 @@ class AgentProxy:
         task = QueueTask(e)
         await self.policy.push(task)
         await task.wait()
-        return {"result": task.result}
+        return {
+            "result": task.result,
+        }
 
     async def execute_task(self):
         async def run_task(task: QueueTask, prompt: str, stop: Any):
@@ -328,3 +259,50 @@ class AgentProxy:
                 raise e
 
             await asyncio.sleep(self.update_interval)
+
+    @asynccontextmanager
+    async def lifespan(self, app: FastAPI):
+        asyncio.create_task(self.update_membership())
+        asyncio.create_task(self.execute_task())
+        await self.logger.start()
+        yield
+        await self.logger.stop()
+
+    def run(self, domain: str, host: str, port: int):
+        self.my_url = f"http://{domain}:{port}"
+        router = APIRouter()
+        router.get("/ready")(self.ready)
+        router.get("/membership/view")(self.membership_view)
+        router.post("/coordinator")(self.handle_coordinator)
+        router.post("/agent/call")(self.call_agent)
+        app = FastAPI(lifespan=self.lifespan)
+        app.include_router(router)
+
+        @app.exception_handler(RequestValidationError)
+        async def validation_exception_handler(
+            request: Request, exc: RequestValidationError
+        ):
+            await self.logger.error(
+                f"422 Validation Error on {request.method} {request.url}"
+            )
+            await self.logger.error(f"Detail: {exc.errors()}")
+            await self.logger.error(f"Body: {exc.body}")
+            return JSONResponse(
+                status_code=422,
+                content={"detail": exc.errors()},
+            )
+
+        @app.exception_handler(ResponseValidationError)
+        async def response_validation_exception_handler(
+            request: Request, exc: ResponseValidationError
+        ):
+            await self.logger.error(
+                f"500 Response Validation Error on {request.method} {request.url}"
+            )
+            await self.logger.error(f"Detail: {exc.errors()}")
+            return JSONResponse(
+                status_code=500,
+                content={"detail": exc.errors()},
+            )
+
+        uvicorn.run(app, host=host, port=port)

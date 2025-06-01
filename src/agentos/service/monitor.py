@@ -23,7 +23,9 @@ class AgentMonitorServer:
         self.logger = AsyncLogger("monitor")
 
     async def ready(self):
-        return {"status": "agent monitor ok"}
+        return {
+            "status": "agent monitor ok",
+        }
 
     async def get_agents(self):
         api_path = "get_agents"
@@ -43,7 +45,9 @@ class AgentMonitorServer:
         async with self.lock:
             id = req.agent_info.id
             if req.agent_info is None:
-                return {"success": False}
+                return {
+                    "success": False,
+                }
 
             self.agents[id] = req.agent_info
             return {
@@ -56,10 +60,14 @@ class AgentMonitorServer:
         await self.logger.info(f"{api_path} - {id}")
         async with self.lock:
             if id not in self.agents:
-                return {"success": False}
+                return {
+                    "success": False,
+                }
 
             del self.agents[id]
-            return {"success": True}
+            return {
+                "success": True,
+            }
 
     @asynccontextmanager
     async def lifespan(self, app: FastAPI):

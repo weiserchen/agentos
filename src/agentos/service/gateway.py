@@ -23,7 +23,7 @@ class TaskResult:
         self.completed = False
         self.success = False
         self.term = -1
-        self.round = 0
+        self.round = -1
         self.result = ""
 
     def update(self, term: int, round: int, result: str) -> bool:
@@ -81,9 +81,11 @@ class AgentGatewayServer:
 
                 data = {
                     "task_id": task_id,
+                    "round": 0,
                     "term": 0,
                     "task_name": e.task_name,
                     "task_description": e.task_description,
+                    "task_result": "",
                 }
                 await self.logger.debug(f"query - {data}")
                 async with session.post(
@@ -105,6 +107,8 @@ class AgentGatewayServer:
             }
 
     async def task_update(self, e: TaskUpdateEvent):
+        await self.logger.info(f"update status - {e}")
+
         async with self.lock:
             if e.task_id not in self.task_map:
                 return {
