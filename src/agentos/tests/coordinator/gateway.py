@@ -15,6 +15,7 @@ from agentos.tasks.elem import TaskStatus
 from agentos.tasks.task_descriptions import default_tasks
 from agentos.utils.logger import AsyncLogger
 from agentos.utils.ready import is_url_ready
+from agentos.utils.sleep import random_sleep
 
 gateway_host = "127.0.0.1"
 gateway_port = 10000
@@ -165,7 +166,7 @@ async def test_gateway():
                             await logger.warning(
                                 f"[Task {task_id}] term: {body['term']} round: {body['round']} waiting for result..."
                             )
-                            await asyncio.sleep(sleep_interval)
+                            await random_sleep(sleep_interval)
                         elif status == TaskStatus.COMPLETED:
                             assert body["success"]
                             result = body["result"]

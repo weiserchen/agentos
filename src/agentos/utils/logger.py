@@ -3,6 +3,8 @@ import logging
 import queue
 import sys
 
+from agentos.utils.sleep import random_sleep
+
 
 class LogColors:
     RESET = "\033[0m"
@@ -85,10 +87,10 @@ class AsyncLogger:
                         shutdown = True
                         break
                     records.append(record)
-                self.cond.notify_all() 
+                self.cond.notify_all()
 
             if len(records) == 0:
-                await asyncio.sleep(sleep_time)
+                await random_sleep(sleep_time)
             else:
                 for record in records:
                     self.logger.handle(record)

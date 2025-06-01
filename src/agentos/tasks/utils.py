@@ -2,6 +2,8 @@ from typing import Any, Dict
 
 import aiohttp
 
+from agentos.utils.logger import AsyncLogger
+
 
 async def http_get(url: str) -> Dict[str, Any]:
     result = dict()
@@ -17,7 +19,7 @@ async def http_get(url: str) -> Dict[str, Any]:
             return result
 
 
-async def http_post(url: str, body: Dict) -> Any:
+async def http_post(logger: AsyncLogger, url: str, body: Dict) -> Any:
     result = dict()
     try:
         async with aiohttp.ClientSession() as session:
@@ -30,8 +32,11 @@ async def http_post(url: str, body: Dict) -> Any:
                 result["body"] = await response.json()
                 result["success"] = True
                 return result
-    except Exception:
+    except Exception as e:
         result["success"] = False
+        err_str = f"exception: {e}"
+        await logger.error(err_str)
+        result["err"] = err_str
         return result
 
 

@@ -1,4 +1,3 @@
-import asyncio
 import multiprocessing as mp
 from multiprocessing import Process
 from typing import List
@@ -10,6 +9,7 @@ from agentos.agent.proxy import AgentProxy
 from agentos.service.monitor import AgentMonitorServer
 from agentos.utils.logger import AsyncLogger
 from agentos.utils.ready import is_url_ready
+from agentos.utils.sleep import random_sleep
 
 gateway_host = "127.0.0.1"
 gateway_port = 10000
@@ -130,7 +130,7 @@ async def test_agent_monitor_proxy():
                 if i == MAX_RETRY - 1:
                     raise e
                 else:
-                    await asyncio.sleep(1)
+                    await random_sleep(1)
 
     finally:
         await logger.stop()

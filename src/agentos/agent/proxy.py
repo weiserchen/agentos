@@ -25,6 +25,7 @@ from agentos.tasks.executor import AgentInfo
 from agentos.tasks.generate_task import get_task_node
 from agentos.tasks.utils import http_post_with_exception, http_put_with_exception
 from agentos.utils.logger import AsyncLogger
+from agentos.utils.sleep import random_sleep
 
 
 class Agent:
@@ -120,11 +121,16 @@ class AgentProxy:
                             else TaskStatus.PENDING,
                             "task_result": coord.result,
                         }
-                        await http_put_with_exception(
-                            url=self.dbserver_url + "/task/status",
-                            data=status_data,
-                            name="db task status",
-                        )
+                        try:
+                            await http_put_with_exception(
+                                url=self.dbserver_url + "/task/status",
+                                data=status_data,
+                                name="db task status",
+                            )
+                        except Exception as e:
+                            await self.logger.error(
+                                f"run_coordinator - task {coord.task_id} - database task update failed: {e}"
+                            )
 
                     gw_data = {
                         "task_id": coord.task_id,
@@ -134,11 +140,16 @@ class AgentProxy:
                         "success": coord.success,
                         "result": coord.result,
                     }
-                    await http_post_with_exception(
-                        url=self.gateway_url + "/task/update",
-                        data=gw_data,
-                        name="gateway",
-                    )
+                    try:
+                        await http_post_with_exception(
+                            url=self.gateway_url + "/task/update",
+                            data=gw_data,
+                            name="gateway",
+                        )
+                    except Exception as e:
+                        await self.logger.error(
+                            f"run_coordinator - task {coord.task_id} - gateway task update failed: {e}"
+                        )
 
             except Exception as e:
                 await self.logger.error(
@@ -204,7 +215,7 @@ class AgentProxy:
             task = await self.policy.pop()
             if task is None:
                 self.semaphore.release()
-                await asyncio.sleep(0.5)
+                await random_sleep(0.5)
                 continue
 
             event: AgentCallTaskEvent = task.task_event
@@ -258,7 +269,7 @@ class AgentProxy:
                 await self.logger.error(f"exception: {e}")
                 raise e
 
-            await asyncio.sleep(self.update_interval)
+            await random_sleep(self.update_interval)
 
     @asynccontextmanager
     async def lifespan(self, app: FastAPI):

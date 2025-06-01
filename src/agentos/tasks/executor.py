@@ -113,16 +113,26 @@ class SimpleTreeTaskExecutor:
                     "task_description": current_passage_generation_prompt,
                     "task_stop": stop,
                 }
-                futures.append(http_post(worker.addr + "/agent/call", body))
+                futures.append(
+                    http_post(
+                        self.logger,
+                        worker.addr + "/agent/call",
+                        body,
+                    )
+                )
 
             output_results = await asyncio.gather(*futures)
             await self.logger.info(f"[Round {self.round}] samples generated...")
 
             outputs = []
             # remove failed workers
-            for result in output_results:
+            for i, result in enumerate(output_results):
                 if result["success"]:
                     outputs.append(result["body"]["result"])
+                else:
+                    await self.logger.warning(
+                        f"worker {workers[i].id} - request failed"
+                    )
 
             await self.logger.info(f"[Round {self.round}] voting started...")
             vote_prompt = wrap_vote_prompts(outputs, vote_prompt)
@@ -136,14 +146,22 @@ class SimpleTreeTaskExecutor:
                     "task_description": vote_prompt,
                     "task_stop": None,
                 }
-                futures.append(http_post(voter.addr + "/agent/call", body))
+                futures.append(
+                    http_post(
+                        self.logger,
+                        voter.addr + "/agent/call",
+                        body,
+                    )
+                )
 
             raw_vote_results = await asyncio.gather(*futures)
             raw_votes = []
             # remove failed voters
-            for result in raw_vote_results:
+            for i, result in enumerate(raw_vote_results):
                 if result["success"]:
                     raw_votes.append(result["body"]["result"])
+                else:
+                    await self.logger.warning(f"voter {voters[i].id} - request failed")
 
             votes = [get_vote(raw_vote, outputs) for raw_vote in raw_votes]
             chosen_output = get_most_voted_output(votes, outputs)

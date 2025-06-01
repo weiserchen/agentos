@@ -10,6 +10,7 @@ from fastapi import APIRouter, FastAPI
 from agentos.tasks.elem import TaskQueryEvent, TaskStatus, TaskUpdateEvent
 from agentos.tasks.executor import AgentInfo
 from agentos.utils.logger import AsyncLogger
+from agentos.utils.sleep import random_sleep
 
 
 def pick_random_agent(agents: Dict[str, AgentInfo]) -> AgentInfo:
@@ -169,7 +170,7 @@ class AgentGatewayServer:
                         async with self.lock:
                             self.agents = new_agents
 
-                await asyncio.sleep(sleep_interval)
+                await random_sleep(sleep_interval)
 
             except Exception as e:
                 await self.logger.error(f"retrieve_agents - exception: {e}")

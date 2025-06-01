@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from agentos.tasks.elem import TaskStatus
 from agentos.tasks.executor import AgentInfo
 from agentos.utils.logger import AsyncLogger
+from agentos.utils.sleep import random_sleep
 
 
 class AgentStatusRequest(BaseModel):
@@ -81,7 +82,7 @@ class AgentRecoveryServer:
                         await self.logger.warning(
                             f"recover_agents - retrying task: {task_id} - exception: {e}"
                         )
-                        await asyncio.sleep(0.5)
+                        await random_sleep(0.5)
 
         try:
             tasks = []
@@ -143,7 +144,7 @@ class AgentRecoveryServer:
                             self.recovering_set.add(id)
                             asyncio.create_task(self.recover_agent(agent))
 
-            await asyncio.sleep(self.update_interval)
+            await random_sleep(self.update_interval)
 
     async def retrieve_agents(self):
         while True:
@@ -173,7 +174,7 @@ class AgentRecoveryServer:
 
                             self.agents = new_agents
 
-                await asyncio.sleep(self.update_interval)
+                await random_sleep(self.update_interval)
 
             except Exception as e:
                 await self.logger.error(f"retrieve_agents - exception: {e}")

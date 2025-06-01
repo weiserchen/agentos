@@ -3,7 +3,9 @@ import time
 
 import aiohttp
 
+from agentos.tasks.elem import TaskStatus
 from agentos.utils.logger import AsyncLogger
+from agentos.utils.sleep import random_sleep
 
 gateway_host = "127.0.0.1"
 gateway_port = 10000
@@ -36,7 +38,7 @@ async def main():
                 async with session.post(gateway_url + "/query", json=data) as response:
                     assert response.status < 300
                     body = await response.json()
-                    assert body["success"]
+                    assert body["success"], body["err"]
                     task_id = body["task_id"]
 
             sleep_interval = 10
@@ -51,21 +53,24 @@ async def main():
                         assert response.status < 300
                         body = await response.json()
                         status = body["status"]
-                        if status == "not exist":
+                        if status == TaskStatus.NON_EXIST:
                             error_str = f"task {task_id} not exist"
                             await logger.error(f"[Task {task_id}] {error_str}")
                             raise Exception(f"task {task_id} not exist")
-                        elif status == "ok":
+                        elif status == TaskStatus.PENDING:
+                            await logger.warning(
+                                f"[Task {task_id}] term: {body['term']} round: {body['round']} waiting for result..."
+                            )
+                            await random_sleep(sleep_interval)
+                        elif status == TaskStatus.COMPLETED:
                             assert body["success"]
                             result = body["result"]
                             assert result != ""
                             await logger.debug(f"[Task {task_id}] result: \n{result}")
                             break
+
                         else:
-                            await logger.warning(
-                                f"[Task {task_id}] waiting for result..."
-                            )
-                            await asyncio.sleep(sleep_interval)
+                            raise Exception("invalid state")
 
         start_time = time.perf_counter()
         futures = []

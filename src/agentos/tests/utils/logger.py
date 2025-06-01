@@ -6,6 +6,7 @@ import pytest
 from agentos.scheduler import FIFOPolicy, QueueTask
 from agentos.tasks.elem import TaskEvent
 from agentos.utils.logger import AsyncLogger
+from agentos.utils.sleep import random_sleep
 
 
 @pytest.mark.asyncio
@@ -34,7 +35,7 @@ async def test_async_logger():
                     await producer_logger.info(f"enqueue task {i + 1}")
                     break
                 else:
-                    await asyncio.sleep(0.1)
+                    await random_sleep(0.1)
                     continue
 
     async def consumer():
@@ -42,7 +43,7 @@ async def test_async_logger():
             while True:
                 task = await policy.pop()
                 if task is None:
-                    await asyncio.sleep(0.1)
+                    await random_sleep(0.1)
                     continue
 
                 out_tasks.append(task)

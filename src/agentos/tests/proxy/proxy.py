@@ -1,4 +1,3 @@
-import asyncio
 import multiprocessing as mp
 
 import aiohttp
@@ -8,6 +7,7 @@ from agentos.agent.proxy import AgentProxy
 from agentos.service.monitor import AgentMonitorServer
 from agentos.utils.logger import AsyncLogger
 from agentos.utils.ready import is_url_ready
+from agentos.utils.sleep import random_sleep
 
 gateway_host = "127.0.0.1"
 gateway_port = 10000
@@ -88,7 +88,7 @@ async def test_agent_proxy():
                         view_ok = True
                         break
 
-                    await asyncio.sleep(0.5)
+                    await random_sleep(0.5)
 
         assert view_ok
 
