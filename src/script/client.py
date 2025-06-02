@@ -42,7 +42,9 @@ async def main():
                     task_id = body["task_id"]
 
             sleep_interval = 10
-            while True:
+            timeout = 300
+            start = time.time()
+            while time.time() - start < timeout:
                 async with aiohttp.ClientSession() as session:
                     data = {
                         "task_id": task_id,
@@ -57,11 +59,13 @@ async def main():
                             error_str = f"task {task_id} not exist"
                             await logger.error(f"[Task {task_id}] {error_str}")
                             raise Exception(f"task {task_id} not exist")
+
                         elif status == TaskStatus.PENDING:
                             await logger.warning(
                                 f"[Task {task_id}] term: {body['term']} round: {body['round']} waiting for result..."
                             )
                             await random_sleep(sleep_interval)
+
                         elif status == TaskStatus.COMPLETED:
                             assert body["success"]
                             result = body["result"]

@@ -8,6 +8,7 @@ from agentos.agent.proxy import AgentInfo, AgentProxy
 from agentos.service.dbserver import AgentDatabaseServer
 from agentos.service.gateway import AgentGatewayServer
 from agentos.service.monitor import AgentMonitorServer
+from agentos.service.recovery import AgentRecoveryServer
 from agentos.utils.logger import AsyncLogger
 from agentos.utils.ready import is_url_ready
 
@@ -24,6 +25,11 @@ db_file = os.path.join(script_dir, "pytest.db")
 dbserver_host = "127.0.0.1"
 dbserver_port = 10002
 dbserver_url = f"http://{dbserver_host}:{dbserver_port}"
+
+recovery_host = "127.0.0.1"
+recovery_port = 10003
+recovery_url = f"http://{recovery_host}:{recovery_port}"
+recovery_interval = 10
 
 proxy_domain = "127.0.0.1"
 proxy_host = "127.0.0.1"
@@ -60,6 +66,19 @@ def run_dbserver():
         raise e
 
 
+def run_recovery():
+    try:
+        recovery = AgentRecoveryServer(
+            monitor_url,
+            dbserver_url,
+            update_interval=recovery_interval,
+        )
+        recovery.run(recovery_host, recovery_port)
+    except Exception as e:
+        print(f"Exception: {e}")
+        raise e
+
+
 def run_proxy(id: str, domain: str, host: str, port: int, local_api_port: int):
     try:
         proxy = AgentProxy(
@@ -91,6 +110,11 @@ async def main():
         dbserver_process.start()
 
         assert await is_url_ready(logger, dbserver_url)
+
+        recovery_process = mp.Process(target=run_recovery)
+        recovery_process.start()
+
+        assert await is_url_ready(logger, recovery_url)
 
         proxy_processes: List[Process] = []
         proxy_ids = []
@@ -137,12 +161,14 @@ async def main():
 
         monitor_process.terminate()
         dbserver_process.terminate()
+        recovery_process.terminate()
         gateway_process.terminate()
         for proxy_process in proxy_processes:
             proxy_process.terminate()
 
         monitor_process.join()
         dbserver_process.join()
+        recovery_process.join()
         gateway_process.join()
         for proxy_process in proxy_processes:
             proxy_process.join()

@@ -23,9 +23,10 @@ class TaskResult:
         self.task_id = task_id
         self.completed = False
         self.success = False
-        self.term = -1
+        self.term = 0
         self.round = -1
         self.result = ""
+        self.status = TaskStatus.PENDING
 
     def update(self, term: int, round: int, result: str) -> bool:
         if term < self.term:
@@ -42,6 +43,13 @@ class TaskResult:
         self.completed = True
         self.success = success
         self.result = result
+        self.status = TaskStatus.COMPLETED
+
+    def mark_aborted(self):
+        self.completed = True
+        self.success = False
+        self.result = "aborted"
+        self.status = TaskStatus.ABORTED
 
 
 class AgentGatewayServer:
@@ -127,26 +135,73 @@ class AgentGatewayServer:
 
     async def task_status(self, task_id: int):
         async with self.lock:
-            if task_id not in self.task_map:
-                return {
-                    "status": TaskStatus.NON_EXIST,
-                }
+            if task_id in self.task_map:
+                task_result = self.task_map[task_id]
+                if not task_result.completed:
+                    return {
+                        "status": task_result.status,
+                        "term": task_result.term,
+                        "round": task_result.round,
+                    }
+                else:
+                    return {
+                        "status": task_result.status,
+                        "success": task_result.success,
+                        "result": task_result.result,
+                    }
 
-            task_result = self.task_map[task_id]
-            if not task_result.completed:
-                return {
-                    "status": TaskStatus.PENDING,
-                    "term": task_result.term,
-                    "round": task_result.round,
+        try:
+            async with aiohttp.ClientSession() as session:
+                data = {
+                    "task_id": task_id,
                 }
-            else:
-                return {
-                    "status": TaskStatus.COMPLETED,
-                    "success": task_result.success,
-                    "result": task_result.result,
-                }
+                async with session.put(
+                    self.dbserver_url + "/task", params=data
+                ) as response:
+                    assert response.status < 300
+                    body = await response.json()
+                    assert body["success"], body["err"]
 
-    async def retrieve_agents(self):
+                    task_status = body["task_status"]
+                    success = body["success"]
+                    result = body["result"]
+                    term = body["term"]
+                    round = body["round"]
+                    result = TaskResult(task_id)
+                    if task_status == TaskStatus.COMPLETED:
+                        result.mark_complete(success, result)
+                    elif task_status == TaskStatus.PENDING:
+                        result.update(term, round, result)
+                    elif task_status == TaskStatus.ABORTED:
+                        result.mark_aborted()
+                    else:
+                        raise Exception("invalid state")
+
+                    async with self.lock:
+                        self.task_map[task_id] = result
+
+                    if not result.completed:
+                        return {
+                            "status": result.status,
+                            "term": result.term,
+                            "round": result.round,
+                        }
+                    else:
+                        return {
+                            "status": result.status,
+                            "success": result.success,
+                            "result": result.result,
+                        }
+
+        except Exception as e:
+            err_str = f"task_status - exception: {e}"
+            await self.logger.error(err_str)
+            return {
+                "status": TaskStatus.NON_EXIST,
+                "err": err_str,
+            }
+
+    async def update_membership(self):
         sleep_interval = 10
         while True:
             try:
@@ -166,19 +221,19 @@ class AgentGatewayServer:
                             )
                             new_agents[id] = agent_info
 
-                        await self.logger.debug(f"retrieve_agents: {new_agents}")
+                        await self.logger.debug(f"update_membership: {new_agents}")
                         async with self.lock:
                             self.agents = new_agents
 
-                await random_sleep(sleep_interval)
-
             except Exception as e:
-                await self.logger.error(f"retrieve_agents - exception: {e}")
+                await self.logger.error(f"update_membership - exception: {e}")
+
+            await random_sleep(sleep_interval)
 
     @asynccontextmanager
     async def lifespan(self, app: FastAPI):
-        asyncio.create_task(self.retrieve_agents())
         await self.logger.start()
+        asyncio.create_task(self.update_membership())
         yield
         await self.logger.stop()
 

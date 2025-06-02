@@ -127,10 +127,16 @@ class AgentProxy:
                                 data=status_data,
                                 name="db task status",
                             )
+                        except HTTPException as e:
+                            await self.logger.error(
+                                f"run_coordinator - task {coord.task_id} - database conneciton failed: {e}"
+                            )
+                        # probably term expired
                         except Exception as e:
                             await self.logger.error(
                                 f"run_coordinator - task {coord.task_id} - database task update failed: {e}"
                             )
+                            return
 
                     gw_data = {
                         "task_id": coord.task_id,

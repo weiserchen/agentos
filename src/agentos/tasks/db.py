@@ -66,7 +66,7 @@ class AgentDatabase:
 
     async def update_pending_task_status(
         self, task_id, round, term, task_status, task_result
-    ) -> bool:
+    ) -> int:
         async with aiosqlite.connect(self.db_file) as db:
             cursor = await db.execute(
                 """

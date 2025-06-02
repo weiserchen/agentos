@@ -1,4 +1,5 @@
 import asyncio
+import time
 from contextlib import asynccontextmanager
 from typing import Dict
 
@@ -8,6 +9,7 @@ from pydantic import BaseModel
 
 from agentos.tasks.executor import AgentInfo
 from agentos.utils.logger import AsyncLogger
+from agentos.utils.sleep import random_sleep
 
 
 class AgentStatusRequest(BaseModel):
@@ -17,8 +19,11 @@ class AgentStatusRequest(BaseModel):
 class AgentMonitorServer:
     agents: Dict[str, AgentInfo]
 
-    def __init__(self):
+    def __init__(self, update_interval: int = 10):
+        self.update_interval = update_interval
+        self.alive_timeout = update_interval * 3
         self.agents = dict()
+        self.last_update_time = dict()
         self.lock = asyncio.Lock()
         self.logger = AsyncLogger("monitor")
 
@@ -37,11 +42,14 @@ class AgentMonitorServer:
 
     async def get_agent(self, id: str):
         async with self.lock:
-            return {"agent_info": self.agents.get(id)}
+            return {
+                "agent_info": self.agents.get(id),
+            }
 
     async def add_agent(self, req: AgentStatusRequest):
         api_path = "add_agent"
         await self.logger.info(f"{api_path} - {req}")
+        now = time.time()
         async with self.lock:
             id = req.agent_info.id
             if req.agent_info is None:
@@ -50,6 +58,7 @@ class AgentMonitorServer:
                 }
 
             self.agents[id] = req.agent_info
+            self.last_update_time[id] = now
             return {
                 "success": True,
                 "members": self.agents,
@@ -69,9 +78,24 @@ class AgentMonitorServer:
                 "success": True,
             }
 
+    async def remove_dead_member(self):
+        while True:
+            now = time.time()
+            async with self.lock:
+                dead_agents = []
+                for id in self.agents.keys():
+                    if now - self.last_update_time[id] >= self.alive_timeout:
+                        dead_agents.append(id)
+
+                for id in dead_agents:
+                    del self.agents[id]
+
+            await random_sleep(self.update_interval)
+
     @asynccontextmanager
     async def lifespan(self, app: FastAPI):
         await self.logger.start()
+        asyncio.create_task(self.remove_dead_member())
         yield
         await self.logger.stop()
 

@@ -60,7 +60,7 @@ def run_proxy(id: str, domain: str, host: str, port: int):
 
 
 @pytest.mark.asyncio
-async def test_executor():
+async def test_agent_recovery():
     try:
         logger = AsyncLogger("pytest")
         await logger.start()

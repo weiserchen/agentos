@@ -1,6 +1,7 @@
 import asyncio
 import random
-import time
+import sys
+import traceback
 from contextlib import asynccontextmanager
 from typing import Dict
 
@@ -11,6 +12,7 @@ from pydantic import BaseModel
 
 from agentos.tasks.elem import TaskStatus
 from agentos.tasks.executor import AgentInfo
+from agentos.tasks.utils import http_post_with_exception
 from agentos.utils.logger import AsyncLogger
 from agentos.utils.sleep import random_sleep
 
@@ -22,69 +24,74 @@ class AgentStatusRequest(BaseModel):
 class AgentRecoveryServer:
     agents: Dict[str, AgentInfo]
 
-    def __init__(self, monitor_url: str, dbserver_url, update_interval: int = 5):
+    def __init__(self, monitor_url: str, dbserver_url: str, update_interval: int = 10):
         self.monitor_url = monitor_url
         self.dbserver_url = dbserver_url
         self.update_interval = update_interval
-        self.recovery_timeout = update_interval * 3
         self.agents = dict()
-        self.membership = dict()
-        self.last_update_time: Dict[str, int] = dict()
         self.recovering_set = set()
         self.lock = asyncio.Lock()
         self.logger = AsyncLogger("recovery")
 
     async def ready(self):
-        return {"status": "agent recovery ok"}
+        return {
+            "status": "agent recovery ok",
+        }
 
     async def get_agent(self) -> AgentInfo:
         async with self.lock:
-            agent_list = self.agents.values()
+            agent_list = list(self.agents.values())
             return random.choice(agent_list)
 
     async def recover_agent(self, agent: AgentInfo):
         MAX_RETRY = 3
 
         async def recover_task(task) -> bool:
+            task["term"] += 1
+            task["round"] += 1
             task_id = task["task_id"]
             round = task["round"]
-            term = task["term"] + 1
-            task_result = task["result"]
+            term = task["term"]
             task_name = task["task_name"]
-            task_description = task["description"]
+            task_description = task["task_description"]
+            task_result = task["task_result"]
             data = {
                 "task_id": task_id,
                 "round": round,
                 "term": term,
-                "task_result": task_result,
                 "task_name": task_name,
                 "task_description": task_description,
+                "task_result": task_result,
             }
+            await self.logger.warning(f"recoverying task {task_id}")
             for i in range(MAX_RETRY):
                 try:
                     new_agent = await self.get_agent()
-                    async with session.post(
-                        new_agent.addr + "/coordinator", json=data
-                    ) as response:
-                        assert response.status < 300, (
-                            f"error response status code: {response.status}"
-                        )
-                        body = await response.json()
-                        assert body["success"], "request not successful"
-                        break
+                    await http_post_with_exception(
+                        url=new_agent.addr + "/coordinator",
+                        data=data,
+                        name="recovery",
+                    )
+
+                    await self.logger.warning(f"[Task {task_id}] recovered")
+
+                    return True
+
                 except Exception as e:
                     if i == MAX_RETRY - 1:
                         await self.logger.error(
                             f"recover_agents - failed to retry task: {task_id} - exception: {e}"
                         )
-                        return
+                        return False
                     else:
-                        await self.logger.warning(
+                        await self.logger.error(
                             f"recover_agents - retrying task: {task_id} - exception: {e}"
                         )
-                        await random_sleep(0.5)
+                        await random_sleep(5)
 
         try:
+            await self.logger.warning(f"recovering agent {agent.id}...")
+
             tasks = []
             data = {
                 "task_agent": agent.id,
@@ -116,37 +123,36 @@ class AgentRecoveryServer:
                         "task_status": TaskStatus.ABORTED,
                         "task_result": "aborted",
                     }
-                    async with aiohttp.ClientSession() as session:
-                        async with session.put(
-                            self.dbserver_url + "/task/status", json=data
-                        ) as response:
-                            assert response.status < 300, (
-                                f"error response status code: {response.status}"
-                            )
-                            body = await response.json()
-                            assert body["success"], body["err"]
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            async with session.put(
+                                self.dbserver_url + "/task/status", json=data
+                            ) as response:
+                                assert response.status < 300, (
+                                    f"error response status code: {response.status}"
+                                )
+                                body = await response.json()
+                                assert body["success"], body["err"]
+
+                        await self.logger.warning(f"[Task {task['task_id']}] aborted")
+
+                    except Exception as e:
+                        await self.logger.error(f"recover_agents - exception: {e}")
 
             async with self.lock:
                 self.recovering_set.remove(agent.id)
-                del self.membership[id]
 
-        except Exception:
-            await self.logger.error("recover_agents - exception: {e}")
+        except Exception as e:
+            tb = sys.exc_info()[2]
+            filename, lineno, func, text = traceback.extract_tb(tb)[-1]
+            err_str = f"Exception in {filename}, line {lineno}: {text}"
+            await self.logger.error(f"recover_agents - exception: {e} - {err_str}")
 
-    async def handle_recovery(self):
-        while True:
-            now = time.time()
+        finally:
             async with self.lock:
-                for id, agent in self.membership.items():
-                    last_time = self.last_update_time[id]
-                    if now - last_time >= self.recovery_timeout:
-                        if id not in self.recovering_set:
-                            self.recovering_set.add(id)
-                            asyncio.create_task(self.recover_agent(agent))
+                self.recovering_set.discard(agent.id)
 
-            await random_sleep(self.update_interval)
-
-    async def retrieve_agents(self):
+    async def update_membership(self):
         while True:
             try:
                 async with aiohttp.ClientSession() as session:
@@ -165,25 +171,25 @@ class AgentRecoveryServer:
                             )
                             new_agents[id] = agent_info
 
-                        await self.logger.debug(f"retrieve_agents: {new_agents}")
-                        now = time.time()
+                        await self.logger.debug(f"update_membership: {new_agents}")
                         async with self.lock:
-                            for id, agent in new_agents:
-                                self.membership[id] = agent
-                                self.last_update_time[id] = now
+                            for id, agent in self.agents.items():
+                                if id not in new_agents:
+                                    if id not in self.recovering_set:
+                                        self.recovering_set.add(id)
+                                        asyncio.create_task(self.recover_agent(agent))
 
                             self.agents = new_agents
 
-                await random_sleep(self.update_interval)
-
             except Exception as e:
-                await self.logger.error(f"retrieve_agents - exception: {e}")
+                await self.logger.error(f"update_membership - exception: {e}")
+
+            await random_sleep(self.update_interval)
 
     @asynccontextmanager
     async def lifespan(self, app: FastAPI):
         await self.logger.start()
-        asyncio.create_task(self.retrieve_agents)
-        asyncio.create_task(self.handle_recovery)
+        asyncio.create_task(self.update_membership())
         yield
         await self.logger.stop()
 
