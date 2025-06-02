@@ -4,10 +4,12 @@ from typing import Any, Dict
 
 import aiohttp
 import uvicorn
+from httpx import Timeout
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from fastapi.responses import JSONResponse
 from openai import AsyncOpenAI
+from agentos.tasks.utils import http_post 
 
 from agentos.config import (
     API_BASE,
@@ -46,19 +48,22 @@ class Agent:
         self.temp = temp
         self.max_tokens = max_tokens
 
-    async def call(self, prompt: str, stop):
-        client = None
-        if self.api_base == "":
-            client = AsyncOpenAI(
-                api_key=self.api_key,
-            )
-        else:
-            client = AsyncOpenAI(
+        timeout = Timeout(connect=30.0, read=600.0, write=None, pool=None)
+
+        if run_local:
+            self.client = AsyncOpenAI(
                 base_url=self.api_base,
                 api_key=self.api_key,
+                timeout=timeout,
+            )
+        else:
+            self.client = AsyncOpenAI(
+                api_key=self.api_key,
+                timeout=timeout,
             )
 
-        res = await client.chat.completions.create(
+    async def call(self, prompt: str, stop):
+        res = await self.client.chat.completions.create(
             model=self.api_model,
             temperature=self.temp,
             max_tokens=self.max_tokens,
@@ -157,22 +162,14 @@ class AgentProxy:
                     "success": coord.success,
                     "result": coord.result,
                 }
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        self.gateway_url + "/task/update", json=data
-                    ) as response:
-                        if response.status >= 300:
-                            await self.logger.error(
-                                f"run_coordinator - task {coord.task_id} task update connection failed"
-                            )
-                            return
-
-                        body = await response.json()
-                        if not body["success"]:
-                            await self.logger.error(
-                                f"run_coordinator - task {coord.task_id} task update failed"
-                            )
-                            return
+                resp = await http_post(self.gateway_url + "/task/update", data)
+                assert resp["success"], f"run_coordinator - failed to update agent status: {resp}"
+                body = resp["body"]
+                if not body["success"]:
+                    await self.logger.error(
+                        f"run_coordinator - task {coord.task_id} task update failed"
+                    )
+                    return
 
             except Exception:
                 pass
@@ -262,25 +259,21 @@ class AgentProxy:
             }
             await self.logger.info(f"heartbeat - {data}")
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        self.monitor_url + "/agent", json=data
-                    ) as response:
-                        # ignore unsuccessful updates
-                        if response.status < 300:
-                            body = await response.json()
-                            if body["success"]:
-                                new_agents_view = dict()
-                                for id, member in body["members"].items():
-                                    agent_info = AgentInfo(
-                                        id=member["id"],
-                                        addr=member["addr"],
-                                        workload=member["workload"],
-                                    )
-                                    new_agents_view[id] = agent_info
+                resp = await http_post(self.monitor_url + "/agent", data)
+                if resp["success"]:
+                    body = resp["body"]
+                    if body["success"]:
+                        new_agents_view = dict()
+                        for id, member in body["members"].items():
+                            agent_info = AgentInfo(
+                                id=member["id"],
+                                addr=member["addr"],
+                                workload=member["workload"],
+                            )
+                            new_agents_view[id] = agent_info
 
-                                async with self.lock:
-                                    self.agents_view = new_agents_view
+                        async with self.lock:
+                            self.agents_view = new_agents_view
 
             except HTTPException as e:
                 await self.logger.error(f"HTTP exception: {e}")

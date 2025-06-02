@@ -10,6 +10,7 @@ from fastapi import APIRouter, FastAPI
 from agentos.tasks.elem import TaskCompleteEvent, TaskQueryEvent
 from agentos.tasks.executor import AgentInfo
 from agentos.utils.logger import AsyncLogger
+from agentos.tasks.utils import http_post, http_get
 
 
 def pick_random_agent(agents: Dict[str, AgentInfo]) -> AgentInfo:
@@ -63,18 +64,16 @@ class RegionalGateway:
                 "n_voters": e.n_voters,
             }
             await self.logger.debug(f"query - {data}")
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    agent.addr + "/coordinator", json=data
-                ) as response:
-                    assert response.status < 300
-                    body = await response.json()
-                    assert body["success"]
-                    self.task_map[task_id] = TaskResult(task_id)
-                    return {
-                        "success": True,
-                        "task_id": task_id,
-                    }
+
+            resp = await http_post(agent.addr + "/coordinator", data)
+            assert resp["success"], f"Failed to post to coordinator: {resp}"
+            body = resp["body"]
+            assert body["success"], f"Coordinator failed to create task: {body}"
+            self.task_map[task_id] = TaskResult(task_id)
+            return {
+                "success": True,
+                "task_id": task_id,
+            }
 
         except Exception as err:
             await self.logger.error(f"query - exception: {err}")
@@ -117,25 +116,22 @@ class RegionalGateway:
         sleep_interval = 10
         while True:
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(
-                        self.monitor_url + "/agent/list"
-                    ) as response:
-                        assert response.status < 300
-                        body = await response.json()
-                        agents = body["agents"]
-                        new_agents = dict()
-                        for id, agent in agents.items():
-                            agent_info = AgentInfo(
-                                id=id,
-                                addr=agent["addr"],
-                                workload=agent["workload"],
-                            )
-                            new_agents[id] = agent_info
+                resp = await http_get(self.monitor_url + "/agent/list")
+                assert resp["success"], f"Failed to retrieve agents: {resp}"
+                body = resp["body"]
+                agents = body["agents"]
+                new_agents = dict()
+                for id, agent in agents.items():
+                    agent_info = AgentInfo(
+                        id=id,
+                        addr=agent["addr"],
+                        workload=agent["workload"],
+                    )
+                    new_agents[id] = agent_info
 
-                        await self.logger.debug(f"retrieve_agents: {new_agents}")
-                        async with self.lock:
-                            self.agents = new_agents
+                await self.logger.debug(f"retrieve_agents: {new_agents}")
+                async with self.lock:
+                    self.agents = new_agents
 
                 await asyncio.sleep(sleep_interval)
 

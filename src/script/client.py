@@ -13,7 +13,7 @@ gateway_url = f"http://{gateway_host}:{gateway_port}"
 
 async def main():
     try:
-        logger = AsyncLogger("client", level=logging.ERROR)
+        logger = AsyncLogger("client", level=logging.DEBUG)
         await logger.start()
 
         inputs = [
