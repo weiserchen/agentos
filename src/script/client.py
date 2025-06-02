@@ -20,16 +20,11 @@ async def main():
             {
                 "task_name": "code_generation",
                 "task_description": "MULTITHREADED BLOCKED MATRIX MULTIPLICATION IN C++",
-            },
-            {
-                "task_name": "code_generation",
-                "task_description": "MULTITHREADED BLOCKED MATRIX MULTIPLICATION IN C++",
-            },
-            # {
-            #     "task_name": "code_generation",
-            #     "task_description": "MULTITHREADED BLOCKED MATRIX MULTIPLICATION IN C++",
-            # },
-        ]
+                "n_rounds": 3,
+                "n_samples": 5,
+                "n_voters": 5
+            }
+        ] * 1
 
         async def execute_task(data):
             task_id = None
@@ -37,7 +32,7 @@ async def main():
                 async with session.post(gateway_url + "/query", json=data) as response:
                     assert response.status < 300, f"Failed to create task: {response.status}"
                     body = await response.json()
-                    assert body["success"]
+                    assert body["success"], f"Failed to create task"
                     task_id = body["task_id"]
 
             sleep_interval = 10

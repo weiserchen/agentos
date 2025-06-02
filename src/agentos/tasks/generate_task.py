@@ -1,9 +1,9 @@
-from agentos.tasks.elem import TaskNode
+from agentos.tasks.elem import TaskNode, CoordinatorTaskEvent
 from agentos.tasks.task_descriptions import default_tasks
 
 generation_prompt_template = """{instructions}
 
-Make a plan then generate the output. If given a Draft Plan, then use ideas from the draft plan to come with a better plan and then generate the output.
+Make a plan then generate the output. If given hints, then use ideas from the hints to come with a plan and then generate the output.
 
 Your output should be of the following format exactly:
 "PLAN:
@@ -38,13 +38,13 @@ def get_task_description(task_name: str, task_description: str) -> str:
         raise ValueError(f"Task {task_name} not found.")
 
 
-def get_task_node(task_name: str, task_description: str) -> TaskNode:
-    task = default_tasks[task_name]
+def get_task_node(task_event: CoordinatorTaskEvent) -> TaskNode:
+    task = default_tasks[task_event.task_name]
     task_node = TaskNode(
-        description=get_task_description(task_name, task_description),
+        description=get_task_description(task_event.task_name, task_event.task_description),
         evaluation=task["evaluation"],
-        n_rounds=task["n_rounds"],
-        n_samples=task["n_samples"],
-        n_voters=task["n_voters"],
+        n_rounds=task_event.n_rounds,
+        n_samples=task_event.n_samples,
+        n_voters=task_event.n_voters,
     )
     return task_node

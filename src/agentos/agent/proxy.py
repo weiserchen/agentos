@@ -148,7 +148,7 @@ class AgentProxy:
             "status": "proxy ok",
         }
 
-    async def handle_coordinator(self, e: CoordinatorTaskEvent):
+    async def handle_coordinator(self, task_event: CoordinatorTaskEvent):
         async def run_coordinator(coord: SingleNodeCoordinator):
             try:
                 await coord.start()
@@ -184,20 +184,20 @@ class AgentProxy:
         try:
             coord = None
             await self.logger.debug(
-                f"coordinator - \ntask_name: {e.task_name}\ntask_description: {e.task_description}"
+                f"coordinator - \ntask_name: {task_event.task_name}\ntask_description: {task_event.task_description}"
             )
             async with self.lock:
-                if e.task_id not in self.coord_map:
-                    task_node = get_task_node(e.task_name, e.task_description)
+                if task_event.task_id not in self.coord_map:
+                    task_node = get_task_node(task_event)
                     await self.logger.debug(
                         f"coordinator - task_node - {str(task_node)}"
                     )
-                    self.coord_map[e.task_id] = SingleNodeCoordinator(
-                        e.task_id,
+                    self.coord_map[task_event.task_id] = SingleNodeCoordinator(
+                        task_event.task_id,
                         task_node,
                         get_agents,
                     )
-                coord = self.coord_map[e.task_id]
+                coord = self.coord_map[task_event.task_id]
 
             asyncio.create_task(run_coordinator(coord))
             return {
