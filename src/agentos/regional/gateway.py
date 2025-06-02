@@ -154,4 +154,4 @@ class RegionalGateway:
         router.post("/task/update")(self.task_update)
         app = FastAPI(lifespan=self.lifespan)
         app.include_router(router)
-        uvicorn.run(app, host=host, port=port)
+        uvicorn.run(app, host=host, port=port, log_level="warning")

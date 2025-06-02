@@ -133,7 +133,7 @@ class AgentProxy:
                 content={"detail": exc.errors()},
             )
 
-        uvicorn.run(app, host=host, port=port)
+        uvicorn.run(app, host=host, port=port, log_level="warning")
 
     @asynccontextmanager
     async def lifespan(self, app: FastAPI):

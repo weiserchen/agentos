@@ -35,7 +35,7 @@ class AsyncLogger:
         self,
         logger_name="default",
         log_file="console",
-        level=logging.INFO,
+        level=logging.WARNING,
         capacity=1000,
     ):
         self.lock = asyncio.Lock()
@@ -62,6 +62,7 @@ class AsyncLogger:
             )
             handler = logging.FileHandler(log_file)
 
+        handler.setLevel(level)
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
 
