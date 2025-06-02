@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 
 import aiohttp
@@ -14,7 +15,7 @@ gateway_url = f"http://{gateway_host}:{gateway_port}"
 
 async def main():
     try:
-        logger = AsyncLogger("client")
+        logger = AsyncLogger("client", level=logging.ERROR)
         await logger.start()
 
         inputs = [
@@ -36,7 +37,9 @@ async def main():
             task_id = None
             async with aiohttp.ClientSession() as session:
                 async with session.post(gateway_url + "/query", json=data) as response:
-                    assert response.status < 300
+                    assert response.status < 300, (
+                        f"Failed to create task: {response.status}"
+                    )
                     body = await response.json()
                     assert body["success"], body["err"]
                     task_id = body["task_id"]

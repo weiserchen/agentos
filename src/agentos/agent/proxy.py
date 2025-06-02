@@ -102,6 +102,56 @@ class AgentProxy:
         self.semaphore = asyncio.Semaphore(sem_cap)
         self.logger = AsyncLogger(id)
 
+<<<<<<< HEAD
+=======
+    def run(self, domain: str, host: str, port: int):
+        self.my_url = f"http://{domain}:{port}"
+        router = APIRouter()
+        router.get("/ready")(self.ready)
+        router.get("/membership/view")(self.membership_view)
+        router.post("/coordinator")(self.handle_coordinator)
+        router.post("/agent/call")(self.call_agent)
+        app = FastAPI(lifespan=self.lifespan)
+        app.include_router(router)
+
+        @app.exception_handler(RequestValidationError)
+        async def validation_exception_handler(
+            request: Request, exc: RequestValidationError
+        ):
+            await self.logger.error(
+                f"422 Validation Error on {request.method} {request.url}"
+            )
+            await self.logger.error(f"Detail: {exc.errors()}")
+            await self.logger.error(f"Body: {exc.body}")
+            return JSONResponse(
+                status_code=422,
+                content={"detail": exc.errors()},
+            )
+
+        @app.exception_handler(ResponseValidationError)
+        async def response_validation_exception_handler(
+            request: Request, exc: ResponseValidationError
+        ):
+            await self.logger.error(
+                f"500 Response Validation Error on {request.method} {request.url}"
+            )
+            await self.logger.error(f"Detail: {exc.errors()}")
+            return JSONResponse(
+                status_code=500,
+                content={"detail": exc.errors()},
+            )
+
+        uvicorn.run(app, host=host, port=port, log_level="warning")
+
+    @asynccontextmanager
+    async def lifespan(self, app: FastAPI):
+        asyncio.create_task(self.update_membership())
+        asyncio.create_task(self.execute_task())
+        await self.logger.start()
+        yield
+        await self.logger.stop()
+
+>>>>>>> 0d997d5 (Changed Default Logging Level to WARNING)
     async def ready(self):
         return {
             "status": "proxy ok",
