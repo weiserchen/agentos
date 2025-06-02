@@ -22,16 +22,11 @@ async def main():
             {
                 "task_name": "code_generation",
                 "task_description": "MULTITHREADED BLOCKED MATRIX MULTIPLICATION IN C++",
-            },
-            {
-                "task_name": "code_generation",
-                "task_description": "MULTITHREADED BLOCKED MATRIX MULTIPLICATION IN C++",
-            },
-            # {
-            #     "task_name": "code_generation",
-            #     "task_description": "MULTITHREADED BLOCKED MATRIX MULTIPLICATION IN C++",
-            # },
-        ]
+                "n_rounds": 3,
+                "n_samples": 5,
+                "n_voters": 5,
+            }
+        ] * 1
 
         async def execute_task(data):
             task_id = None

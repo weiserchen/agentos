@@ -44,12 +44,21 @@ class CoordinatorTaskEvent(BaseModel):
     term: int
     task_name: str
     task_description: str
+<<<<<<< HEAD
     task_result: str
+=======
+    n_rounds: int
+    n_samples: int
+    n_voters: int
+>>>>>>> ffae96e (Clients Pass Tree Parameters)
 
 
 class TaskQueryEvent(BaseModel):
     task_name: str
     task_description: str
+    n_rounds: int
+    n_samples: int
+    n_voters: int
 
 
 class TaskUpdateEvent(BaseModel):
