@@ -2,14 +2,12 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import Any, Dict
 
-import aiohttp
 import uvicorn
-from httpx import Timeout
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from fastapi.responses import JSONResponse
+from httpx import Timeout
 from openai import AsyncOpenAI
-from agentos.tasks.utils import http_post 
 
 from agentos.config import (
     API_BASE,
@@ -20,12 +18,16 @@ from agentos.config import (
     LOCAL_MODEL,
     run_local,
 )
-from agentos.scheduler import FIFOPolicy, QueueTask
+from agentos.scheduler import FIFOPolicy, PriorityPolicy, QueueTask
 from agentos.tasks.coordinator import SingleNodeCoordinator
 from agentos.tasks.elem import AgentCallTaskEvent, CoordinatorTaskEvent, TaskStatus
 from agentos.tasks.executor import AgentInfo
 from agentos.tasks.generate_task import get_task_node
-from agentos.tasks.utils import http_post_with_exception, http_put_with_exception
+from agentos.tasks.utils import (
+    http_post,
+    http_post_with_exception,
+    http_put_with_exception,
+)
 from agentos.utils.logger import AsyncLogger
 from agentos.utils.sleep import random_sleep
 
@@ -85,17 +87,12 @@ class AgentProxy:
         monitor_url: str,
         dbserver_url: str,
         local_api_port: int = 8000,
-<<<<<<< HEAD
         persistence: bool = True,
         update_interval: int = 3,
         queue_cap: int = 10,
         sem_cap: int = 1,
-=======
-        update_interval: int = 2,
-        queue_cap: int = 1000,
-        sem_cap: int = 10,
         load_balancing: str = "random",
->>>>>>> e9aecc8 (Added Load Balancing)
+        scheduling_policy: str = "fifo",
     ):
         self.id = id
         self.my_url = ""
@@ -109,62 +106,18 @@ class AgentProxy:
         self.agent = Agent(API_KEY, API_MODEL, local_api_port)
         self.coord_map: Dict[int, SingleNodeCoordinator] = dict()
         self.agents_view: Dict[str, AgentInfo] = dict()
-        self.policy = FIFOPolicy(queue_cap)
         self.lock = asyncio.Lock()
         self.semaphore = asyncio.Semaphore(sem_cap)
         self.logger = AsyncLogger(id)
         self.load_balancing = load_balancing
 
-<<<<<<< HEAD
-=======
-    def run(self, domain: str, host: str, port: int):
-        self.my_url = f"http://{domain}:{port}"
-        router = APIRouter()
-        router.get("/ready")(self.ready)
-        router.get("/membership/view")(self.membership_view)
-        router.post("/coordinator")(self.handle_coordinator)
-        router.post("/agent/call")(self.call_agent)
-        app = FastAPI(lifespan=self.lifespan)
-        app.include_router(router)
+        if scheduling_policy == "fifo":
+            self.policy = FIFOPolicy(queue_cap)
+        elif scheduling_policy == "priority":
+            self.policy = PriorityPolicy(queue_cap)
+        else:
+            raise ValueError(f"Unknown scheduling policy: {scheduling_policy}")
 
-        @app.exception_handler(RequestValidationError)
-        async def validation_exception_handler(
-            request: Request, exc: RequestValidationError
-        ):
-            await self.logger.error(
-                f"422 Validation Error on {request.method} {request.url}"
-            )
-            await self.logger.error(f"Detail: {exc.errors()}")
-            await self.logger.error(f"Body: {exc.body}")
-            return JSONResponse(
-                status_code=422,
-                content={"detail": exc.errors()},
-            )
-
-        @app.exception_handler(ResponseValidationError)
-        async def response_validation_exception_handler(
-            request: Request, exc: ResponseValidationError
-        ):
-            await self.logger.error(
-                f"500 Response Validation Error on {request.method} {request.url}"
-            )
-            await self.logger.error(f"Detail: {exc.errors()}")
-            return JSONResponse(
-                status_code=500,
-                content={"detail": exc.errors()},
-            )
-
-        uvicorn.run(app, host=host, port=port, log_level="warning")
-
-    @asynccontextmanager
-    async def lifespan(self, app: FastAPI):
-        asyncio.create_task(self.update_membership())
-        asyncio.create_task(self.execute_task())
-        await self.logger.start()
-        yield
-        await self.logger.stop()
-
->>>>>>> 0d997d5 (Changed Default Logging Level to WARNING)
     async def ready(self):
         return {
             "status": "proxy ok",
@@ -173,7 +126,6 @@ class AgentProxy:
     async def handle_coordinator(self, task_event: CoordinatorTaskEvent):
         async def run_coordinator(coord: SingleNodeCoordinator):
             try:
-<<<<<<< HEAD
                 async for _ in coord.run():
                     if self.persistence:
                         status_data = {
@@ -220,22 +172,6 @@ class AgentProxy:
                         await self.logger.error(
                             f"run_coordinator - task {coord.task_id} - gateway task update failed: {e}"
                         )
-=======
-                await coord.start()
-                data = {
-                    "task_id": coord.task_id,
-                    "success": coord.success,
-                    "result": coord.result,
-                }
-                resp = await http_post(self.gateway_url + "/task/update", data)
-                assert resp["success"], f"run_coordinator - failed to update agent status: {resp}"
-                body = resp["body"]
-                if not body["success"]:
-                    await self.logger.error(
-                        f"run_coordinator - task {coord.task_id} task update failed"
-                    )
-                    return
->>>>>>> af32219 (Use Shared HTTP Sessions)
 
             except Exception as e:
                 await self.logger.error(
@@ -257,19 +193,15 @@ class AgentProxy:
                     await self.logger.debug(
                         f"coordinator - task_node - {str(task_node)}"
                     )
-<<<<<<< HEAD
-                    self.coord_map[e.task_id] = SingleNodeCoordinator(
-                        e.task_id,
-                        e.round,
-                        e.term,
-                        e.task_result,
-=======
                     self.coord_map[task_event.task_id] = SingleNodeCoordinator(
                         task_event.task_id,
->>>>>>> ffae96e (Clients Pass Tree Parameters)
+                        task_event.round,
+                        task_event.term,
+                        task_event.task_result,
+                        task_event.task_id,
                         task_node,
                         get_agents,
-                        self.load_balancing
+                        self.load_balancing,
                     )
                 coord = self.coord_map[task_event.task_id]
 
@@ -283,7 +215,7 @@ class AgentProxy:
             raise e
 
     async def call_agent(self, e: AgentCallTaskEvent):
-        task = QueueTask(e)
+        task = QueueTask(e, priority=float(e.task_id))
         await self.policy.push(task)
         await task.wait()
         return {
@@ -323,7 +255,7 @@ class AgentProxy:
             return {
                 "agents": self.agents_view,
             }
-        
+
     async def _current_load(self) -> int:
         pending, _ = await self.policy.size()
         running = self.sem_cap - self.semaphore._value
@@ -409,4 +341,4 @@ class AgentProxy:
                 content={"detail": exc.errors()},
             )
 
-        uvicorn.run(app, host=host, port=port)
+        uvicorn.run(app, host=host, port=port, log_level="warning")

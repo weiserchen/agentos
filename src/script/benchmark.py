@@ -5,8 +5,6 @@ import time
 import logging
 from typing import List
 
-import aiohttp
-
 from agentos.utils.logger import AsyncLogger
 from .benchmark_tasks import benchmark_tasks
 from agentos.tasks.utils import http_post, http_get 
