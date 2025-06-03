@@ -73,10 +73,10 @@ async def poisson_arrival(logger: AsyncLogger) -> None:
         if now - START_TIME >= RUN_TIME_SEC:
             break
 
+        asyncio.create_task(execute_task(logger))
+
         inter_arrival = random.expovariate(REQ_RATE)  # exponential distribution
         await asyncio.sleep(inter_arrival)
-
-        asyncio.create_task(execute_task(logger))
 
 
 async def main() -> None:

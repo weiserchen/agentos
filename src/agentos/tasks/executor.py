@@ -87,7 +87,7 @@ def get_most_voted_output(votes, outputs):
     most_voted_idx = vote_counts.index(max(vote_counts))
     return outputs[most_voted_idx]
 
-async def gather_votes(
+async def gather_votes_naive(
     coro_factories: list[Callable[[], Awaitable[dict]]],
     outputs: list[str],
 ) -> list[int]:
@@ -107,6 +107,54 @@ async def gather_votes(
             continue
     return votes
 
+async def gather_votes_until_majority(
+    coro_factories: list[Callable[[], Awaitable[dict]]],
+    outputs: list[str],
+    majority: int,
+) -> list[int]:
+    """
+    Launch voter coroutines, return as soon as one choice has reached a majority. 
+    Any still-running tasks are cancelled.
+    """
+    tasks: set[asyncio.Task] = {
+        asyncio.create_task(f()) for f in coro_factories
+    }
+
+    vote_counts = [0] * len(outputs)
+    votes = []
+
+    while tasks:
+        done, tasks = await asyncio.wait(
+            tasks, return_when=asyncio.FIRST_COMPLETED
+        )
+
+        for t in done:
+            try:
+                result = t.result()
+                v = get_vote(result["body"]["result"], outputs)
+            except Exception:
+                continue
+
+            votes.append(v)
+            vote_counts[v] += 1
+
+            if vote_counts[v] >= majority:
+                for p in tasks:
+                    p.cancel()
+                return votes
+
+            # Another optimisation: if the *best* candidate can no longer
+            # be beaten even if all remaining votes go elsewhere
+            remaining = len(tasks)
+            best = max(vote_counts)
+            second_best = sorted(vote_counts)[-2] if len(outputs) > 1 else 0
+            if best > second_best + remaining:
+                for p in tasks:
+                    p.cancel()
+                return votes
+
+    return votes
+
 class SimpleTreeTaskExecutor:
     def __init__(
         self,
@@ -115,6 +163,7 @@ class SimpleTreeTaskExecutor:
         node: TaskNode,
         get_agents: Callable[[], Awaitable[Dict[str, AgentInfo]]],
         load_balancing: str = "random",
+        voting_strategy: str = "naive"
     ):
         self.logger = logger
         self.task_id = task_id
@@ -123,6 +172,7 @@ class SimpleTreeTaskExecutor:
         self.result = None
         self.failed = False
         self.load_balancing = load_balancing
+        self.voting_strategy = voting_strategy
 
     async def _generate_samples(
         self,
@@ -176,7 +226,13 @@ class SimpleTreeTaskExecutor:
             for v in voters
         ]
 
-        return await gather_votes(factories, outputs)
+        if self.voting_strategy == "naive":
+            return await gather_votes_naive(factories, outputs)
+        elif self.voting_strategy == "early_majority":
+            majority = n_voters // 2 + 1
+            return await gather_votes_until_majority(factories, outputs, majority)
+        else:
+            raise ValueError(f"Unknown voting strategy: {self.voting_strategy}")
 
     async def start(self):
         gen_prompt_base = self.node.description
