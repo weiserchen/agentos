@@ -2,7 +2,6 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import Any, Dict
 
-import aiohttp
 import uvicorn
 from httpx import Timeout
 from fastapi import APIRouter, FastAPI, HTTPException, Request
@@ -20,7 +19,7 @@ from agentos.config import (
     LOCAL_MODEL,
     run_local,
 )
-from agentos.scheduler import FIFOPolicy, QueueTask
+from agentos.scheduler import FIFOPolicy, QueueTask, PriorityPolicy
 from agentos.tasks.coordinator import SingleNodeCoordinator
 from agentos.tasks.elem import AgentCallTaskEvent, CoordinatorTaskEvent
 from agentos.tasks.executor import AgentInfo
@@ -86,6 +85,7 @@ class AgentProxy:
         queue_cap: int = 1000,
         sem_cap: int = 10,
         load_balancing: str = "random",
+        scheduling_policy: str = "fifo"
     ):
         self.id = id
         self.my_url = ""
@@ -97,11 +97,17 @@ class AgentProxy:
         self.agent = Agent(API_KEY, API_MODEL, local_api_port)
         self.coord_map: Dict[int, SingleNodeCoordinator] = dict()
         self.agents_view: Dict[str, AgentInfo] = dict()
-        self.policy = FIFOPolicy(queue_cap)
         self.lock = asyncio.Lock()
         self.semaphore = asyncio.Semaphore(sem_cap)
         self.logger = AsyncLogger(id)
         self.load_balancing = load_balancing
+
+        if scheduling_policy == "fifo":
+            self.policy = FIFOPolicy(queue_cap)
+        elif scheduling_policy == "priority":
+            self.policy = PriorityPolicy(queue_cap)
+        else:
+            raise ValueError(f"Unknown scheduling policy: {scheduling_policy}")
 
     def run(self, domain: str, host: str, port: int):
         self.my_url = f"http://{domain}:{port}"
@@ -209,7 +215,7 @@ class AgentProxy:
             raise e
 
     async def call_agent(self, e: AgentCallTaskEvent):
-        task = QueueTask(e)
+        task = QueueTask(e, priority=float(e.task_id))
         await self.policy.push(task)
         await task.wait()
         return {"result": task.result}
