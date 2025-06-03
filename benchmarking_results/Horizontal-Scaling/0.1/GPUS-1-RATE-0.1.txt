@@ -1,0 +1,50 @@
+load_balancing = "least_loaded"
+scheduling_policy = "arrival_priority"
+voting_strategy = "early_majority"
+REQ_RATE = 0.1
+RUN_TIME_SEC = 300
+POLL_INTERVAL = 1
+
+[benchmark] - INFO - [    1 done]  avg-latency =  63.169s  throughput =   0.02 req/s
+[benchmark] - INFO - [    2 done]  avg-latency =  60.665s  throughput =   0.03 req/s
+[benchmark] - INFO - [    3 done]  avg-latency =  65.848s  throughput =   0.03 req/s
+[benchmark] - INFO - [    4 done]  avg-latency =  69.188s  throughput =   0.03 req/s
+[benchmark] - INFO - [    5 done]  avg-latency =  74.600s  throughput =   0.04 req/s
+[benchmark] - INFO - [    6 done]  avg-latency =  82.052s  throughput =   0.04 req/s
+[benchmark] - INFO - [    7 done]  avg-latency =  90.527s  throughput =   0.04 req/s
+[benchmark] - INFO - [    8 done]  avg-latency =  97.886s  throughput =   0.04 req/s
+[benchmark] - INFO - [    9 done]  avg-latency = 105.614s  throughput =   0.04 req/s
+[benchmark] - INFO - [   10 done]  avg-latency = 113.001s  throughput =   0.04 req/s
+[benchmark] - INFO - [   11 done]  avg-latency = 118.130s  throughput =   0.04 req/s
+[benchmark] - INFO - [   12 done]  avg-latency = 125.080s  throughput =   0.05 req/s
+[benchmark] - INFO - [   13 done]  avg-latency = 131.502s  throughput =   0.05 req/s
+[benchmark] - INFO - [   14 done]  avg-latency = 135.857s  throughput =   0.05 req/s
+[benchmark] - INFO - [   15 done]  avg-latency = 140.435s  throughput =   0.05 req/s
+[benchmark] - INFO - [   16 done]  avg-latency = 142.623s  throughput =   0.05 req/s
+[benchmark] - INFO - Stopped dispatcing new requests. Waiting for in-flight requests ...
+[benchmark] - INFO - [   17 done]  avg-latency = 144.967s  throughput =   0.05 req/s
+[benchmark] - INFO - [   18 done]  avg-latency = 148.721s  throughput =   0.05 req/s
+[benchmark] - INFO - [   19 done]  avg-latency = 151.711s  throughput =   0.05 req/s
+[benchmark] - INFO - [   20 done]  avg-latency = 155.555s  throughput =   0.05 req/s
+[benchmark] - INFO - [   21 done]  avg-latency = 158.840s  throughput =   0.06 req/s
+[benchmark] - INFO - [   22 done]  avg-latency = 161.966s  throughput =   0.06 req/s
+[benchmark] - INFO - [   23 done]  avg-latency = 166.389s  throughput =   0.05 req/s
+[benchmark] - INFO - [   24 done]  avg-latency = 169.980s  throughput =   0.05 req/s
+[benchmark] - INFO - [   25 done]  avg-latency = 173.286s  throughput =   0.05 req/s
+[benchmark] - INFO - [   26 done]  avg-latency = 177.763s  throughput =   0.05 req/s
+[benchmark] - INFO - [   27 done]  avg-latency = 181.688s  throughput =   0.05 req/s
+[benchmark] - INFO - [   28 done]  avg-latency = 184.866s  throughput =   0.05 req/s
+[benchmark] - INFO - [   29 done]  avg-latency = 187.546s  throughput =   0.06 req/s
+[benchmark] - INFO - [   30 done]  avg-latency = 190.784s  throughput =   0.06 req/s
+[benchmark] - INFO - [   31 done]  avg-latency = 193.912s  throughput =   0.06 req/s
+[benchmark] - INFO - [   32 done]  avg-latency = 197.814s  throughput =   0.06 req/s
+[benchmark] - INFO - [   33 done]  avg-latency = 201.265s  throughput =   0.06 req/s
+[benchmark] - ERROR - [Task 36] - failed with error: Worker Failure: Unknown Error
+[benchmark] - INFO - [   34 done]  avg-latency = 204.606s  throughput =   0.06 req/s
+[benchmark] - ERROR - [Task 38] - failed with error: Worker Failure: Unknown Error
+[benchmark] - INFO - [   35 done]  avg-latency = 207.811s  throughput =   0.06 req/s
+[benchmark] - INFO - [   36 done]  avg-latency = 210.921s  throughput =   0.06 req/s
+[benchmark] - INFO - Finished.
+Total completed: 36
+Average latency: 210.921s
+Overall throughput: 0.06 req/s
