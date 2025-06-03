@@ -231,7 +231,7 @@ class AgentProxy:
             task = QueueTask(e, priority=float(e.task_id))
         elif self.scheduling_policy == "sjf":
             task = QueueTask(e, priority=float(e.total_llm_calls))
-        elif self.scheduling_policy == "ltrf":
+        elif self.scheduling_policy == "srtf":
             if e.task_action == TaskAction.GENERATION:
                 remaining = (e.total_rounds - e.task_round) * (
                     e.n_samples + e.n_voters / 2
