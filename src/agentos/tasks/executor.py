@@ -178,10 +178,9 @@ class SimpleTreeTaskExecutor:
         self,
         prompt: str,
         stop: str | None,
-        n_samples: int,
         round_idx: int,
     ) -> list[str]:
-        workers = pick_k_agents(await self.get_agents(), n_samples, self.load_balancing)
+        workers = pick_k_agents(await self.get_agents(), self.n_samples, self.load_balancing)
 
         factories = [
             lambda b={
@@ -190,6 +189,10 @@ class SimpleTreeTaskExecutor:
                 "task_action": TaskAction.GENERATION,
                 "task_description": prompt,
                 "task_stop": stop,
+                "n_voters": self.n_voters,
+                "n_samples": self.n_samples,
+                "total_rounds": self.n_rounds,
+                "total_llm_calls": self.total_llm_calls,
             }, addr=w.addr: http_post(addr + "/agent/call", b)
             for w in workers
         ]
@@ -211,10 +214,9 @@ class SimpleTreeTaskExecutor:
         self,
         vote_prompt: str,
         outputs: list[str],
-        n_voters: int,
         round_idx: int,
     ) -> list[int]:
-        voters = pick_k_agents(await self.get_agents(), n_voters, self.load_balancing)
+        voters = pick_k_agents(await self.get_agents(), self.n_voters, self.load_balancing)
         factories = [
             lambda b={
                 "task_id": self.task_id,
@@ -222,6 +224,10 @@ class SimpleTreeTaskExecutor:
                 "task_action": TaskAction.VOTING,
                 "task_description": vote_prompt,
                 "task_stop": None,
+                "n_voters": self.n_voters,
+                "n_samples": self.n_samples,
+                "total_rounds": self.n_rounds,
+                "total_llm_calls": self.total_llm_calls,
             }, addr=v.addr: http_post(addr + "/agent/call", b)
             for v in voters
         ]
@@ -229,7 +235,7 @@ class SimpleTreeTaskExecutor:
         if self.voting_strategy == "naive":
             return await gather_votes_naive(factories, outputs)
         elif self.voting_strategy == "early_majority":
-            majority = n_voters // 2 + 1
+            majority = self.n_voters // 2 + 1
             return await gather_votes_until_majority(factories, outputs, majority)
         else:
             raise ValueError(f"Unknown voting strategy: {self.voting_strategy}")
@@ -237,35 +243,36 @@ class SimpleTreeTaskExecutor:
     async def start(self):
         gen_prompt_base = self.node.description
         vote_prompt_base = self.node.evaluation
-        n_rounds, n_samples, n_voters = (
+        self.n_rounds, self.n_samples, self.n_voters = (
             self.node.n_rounds,
             self.node.n_samples,
             self.node.n_voters,
         )
+        self.total_llm_calls = self.n_rounds * (self.n_samples + self.n_voters)
 
         draft_plan: str | None = None
 
-        for r in range(n_rounds):
+        for r in range(self.n_rounds):
             await self.logger.info(f"[Round {r}] start")
 
-            stop_token = None if r == n_rounds - 1 else "\nOutput:\n"
+            stop_token = None if r == self.n_rounds - 1 else "\nOutput:\n"
             gen_prompt = (
                 f"{gen_prompt_base}\nGiven Hints: {draft_plan}"
                 if draft_plan
                 else gen_prompt_base
             )
 
-            outputs = await self._generate_samples(gen_prompt, stop_token, n_samples, r)
+            outputs = await self._generate_samples(gen_prompt, stop_token, r)
             if self.failed:
                 return
             await self.logger.info(f"[Round {r}] {len(outputs)} samples generated")
 
             vote_prompt = wrap_vote_prompt(outputs, vote_prompt_base)
-            votes = await self._gather_votes(vote_prompt, outputs, n_voters, r)
+            votes = await self._gather_votes(vote_prompt, outputs, r)
             chosen_output = get_most_voted_output(votes, outputs)
             await self.logger.info(f"[Round {r}] voting finished")
 
-            if r == n_rounds - 1:
+            if r == self.n_rounds - 1:
                 lower_output = chosen_output.lower()
                 if "output:" in lower_output:
                     idx = lower_output.find("output:")

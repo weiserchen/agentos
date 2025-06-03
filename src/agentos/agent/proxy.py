@@ -9,6 +9,7 @@ from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from fastapi.responses import JSONResponse
 from openai import AsyncOpenAI
 from agentos.tasks.utils import http_post 
+from agentos.tasks.elem import TaskAction
 
 from agentos.config import (
     API_BASE,
@@ -104,9 +105,11 @@ class AgentProxy:
         self.load_balancing = load_balancing
         self.voting_strategy = voting_strategy
 
-        if scheduling_policy == "fifo":
+        self.scheduling_policy = scheduling_policy.lower()
+        if self.scheduling_policy == "fifo":
             self.policy = FIFOPolicy(queue_cap)
-        elif scheduling_policy == "priority":
+        elif self.scheduling_policy == "arrival_priority" or self.scheduling_policy == "sjf" \
+                or self.scheduling_policy == "ltrf":
             self.policy = PriorityPolicy(queue_cap)
         else:
             raise ValueError(f"Unknown scheduling policy: {scheduling_policy}")
@@ -218,7 +221,21 @@ class AgentProxy:
             raise e
 
     async def call_agent(self, e: AgentCallTaskEvent):
-        task = QueueTask(e, priority=float(e.task_id))
+        if self.scheduling_policy == "arrival_priority":
+            task = QueueTask(e, priority=float(e.task_id))
+        elif self.scheduling_policy == "sjf":
+            task = QueueTask(e, priority=float(e.total_llm_calls))
+        elif self.scheduling_policy == "ltrf":
+            if e.task_action == TaskAction.GENERATION:
+                remaining = (e.total_rounds - e.task_round) * (e.n_samples + e.n_voters / 2)
+            elif e.task_action == TaskAction.VOTING:
+                remaining = max(0, (e.total_rounds - e.task_round - 1)) * e.n_samples + \
+                    (e.total_rounds - e.task_round) * e.n_voters / 2
+            else:
+                raise ValueError(f"Unknown task action: {e.task_action}")
+            task = QueueTask(e, priority=float(remaining))
+        else:
+            task = QueueTask(e)
         await self.policy.push(task)
         await task.wait()
         return {"result": task.result}

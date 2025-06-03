@@ -11,8 +11,8 @@ from agentos.tasks.utils import http_post, http_get
 
 random.seed(42)
 
-REQ_RATE = 0.2
-RUN_TIME_SEC = 30
+REQ_RATE = 0.1
+RUN_TIME_SEC = 300
 POLL_INTERVAL = 1
 
 gateway_host = "127.0.0.1"

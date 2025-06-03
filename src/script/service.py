@@ -27,7 +27,7 @@ heartbeat_interval = 2
 sem_cap = 10
 queue_cap = 1000
 load_balancing = "least_loaded"  # Options: "random", "least_loaded"
-scheduling_policy = "priority"  # Options: "fifo", "priority"
+scheduling_policy = "ltrf"  # Options: "fifo", "arrival_priority", "sjf", "ltrf"
 voting_strategy = "early_majority"  # Options: "naive", "early_majority"
 
 def run_gateway():

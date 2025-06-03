@@ -29,6 +29,10 @@ class AgentCallTaskEvent(BaseModel):
     task_action: TaskAction
     task_description: str
     task_stop: Any
+    n_samples: int
+    n_voters: int
+    total_rounds: int
+    total_llm_calls: int
 
 
 class CoordinatorTaskEvent(BaseModel):
