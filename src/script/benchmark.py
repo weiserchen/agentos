@@ -11,7 +11,7 @@ from agentos.tasks.utils import http_post, http_get
 
 random.seed(42)
 
-REQ_RATE = 0.1
+REQ_RATE = 0.2
 RUN_TIME_SEC = 300
 POLL_INTERVAL = 1
 
