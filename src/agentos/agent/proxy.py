@@ -93,6 +93,7 @@ class AgentProxy:
         sem_cap: int = 1,
         load_balancing: str = "random",
         scheduling_policy: str = "fifo",
+        voting_strategy: str = "naive",
     ):
         self.id = id
         self.my_url = ""
@@ -110,6 +111,7 @@ class AgentProxy:
         self.semaphore = asyncio.Semaphore(sem_cap)
         self.logger = AsyncLogger(id)
         self.load_balancing = load_balancing
+        self.voting_strategy = voting_strategy
 
         if scheduling_policy == "fifo":
             self.policy = FIFOPolicy(queue_cap)

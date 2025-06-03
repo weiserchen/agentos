@@ -43,6 +43,7 @@ sem_cap = 10
 queue_cap = 1000
 load_balancing = "least_loaded"  # Options: "random", "least_loaded"
 scheduling_policy = "priority"  # Options: "fifo", "priority"
+voting_strategy = "early_majority"  # Options: "naive", "early_majority"
 
 def run_gateway():
     try:
@@ -96,7 +97,8 @@ def run_proxy(id: str, domain: str, host: str, port: int, local_api_port: int):
             queue_cap=queue_cap,
             sem_cap=sem_cap,
             load_balancing=load_balancing,
-            scheduling_policy=scheduling_policy
+            scheduling_policy=scheduling_policy,
+            voting_strategy=voting_strategy,
         )
         proxy.run(domain, host, port)
     except Exception as e:
