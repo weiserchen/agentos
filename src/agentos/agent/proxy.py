@@ -109,7 +109,7 @@ class AgentProxy:
         if self.scheduling_policy == "fifo":
             self.policy = FIFOPolicy(queue_cap)
         elif self.scheduling_policy == "arrival_priority" or self.scheduling_policy == "sjf" \
-                or self.scheduling_policy == "ltrf":
+                or self.scheduling_policy == "srtf":
             self.policy = PriorityPolicy(queue_cap)
         else:
             raise ValueError(f"Unknown scheduling policy: {scheduling_policy}")
@@ -225,7 +225,7 @@ class AgentProxy:
             task = QueueTask(e, priority=float(e.task_id))
         elif self.scheduling_policy == "sjf":
             task = QueueTask(e, priority=float(e.total_llm_calls))
-        elif self.scheduling_policy == "ltrf":
+        elif self.scheduling_policy == "srtf":
             if e.task_action == TaskAction.GENERATION:
                 remaining = (e.total_rounds - e.task_round) * (e.n_samples + e.n_voters / 2)
             elif e.task_action == TaskAction.VOTING:
