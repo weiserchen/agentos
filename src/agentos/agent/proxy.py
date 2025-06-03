@@ -82,9 +82,10 @@ class AgentProxy:
         gateway_url: str,
         monitor_url: str,
         local_api_port: int = 8000,
-        update_interval: int = 3,
-        queue_cap: int = 10,
-        sem_cap: int = 1,
+        update_interval: int = 2,
+        queue_cap: int = 1000,
+        sem_cap: int = 10,
+        load_balancing: str = "random",
     ):
         self.id = id
         self.my_url = ""
@@ -100,6 +101,7 @@ class AgentProxy:
         self.lock = asyncio.Lock()
         self.semaphore = asyncio.Semaphore(sem_cap)
         self.logger = AsyncLogger(id)
+        self.load_balancing = load_balancing
 
     def run(self, domain: str, host: str, port: int):
         self.my_url = f"http://{domain}:{port}"
@@ -193,6 +195,7 @@ class AgentProxy:
                         task_event.task_id,
                         task_node,
                         get_agents,
+                        self.load_balancing
                     )
                 coord = self.coord_map[task_event.task_id]
 
@@ -247,6 +250,11 @@ class AgentProxy:
             return {
                 "agents": self.agents_view,
             }
+        
+    async def _current_load(self) -> int:
+        pending, _ = await self.policy.size()
+        running = self.sem_cap - self.semaphore._value
+        return pending + running
 
     async def update_membership(self):
         while True:
@@ -254,7 +262,7 @@ class AgentProxy:
                 "agent_info": {
                     "id": self.id,
                     "addr": self.my_url,
-                    "workload": await self.policy.workload(),
+                    "workload": await self._current_load(),
                 },
             }
             await self.logger.info(f"heartbeat - {data}")

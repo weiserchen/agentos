@@ -16,16 +16,50 @@ class AgentInfo(BaseModel):
     workload: int
 
 
+def pick_k_agents(agents: Dict[str, AgentInfo], k: int, load_balancing: str = "random") -> List[AgentInfo]:
+    if load_balancing == "random":
+        return pick_random_k_agents(agents, k)
+    elif load_balancing == "least_loaded":
+        return pick_least_loaded_k_agents(agents, k)
+    else:
+        raise ValueError(f"Unknown load balancing strategy: {load_balancing}")
+
 def pick_random_k_agents(agents: Dict[str, AgentInfo], k: int) -> List[AgentInfo]:
     agent_list = list(agents.values())
     return random.choices(agent_list, k=k)
+
+# def pick_least_loaded_k_agents(agents: Dict[str, AgentInfo], k: int) -> List[AgentInfo]:
+#     counter = itertools.count()
+#     heap = [
+#         (a.workload, next(counter), aid) for aid, a in agents.items()
+#     ]
+#     heapq.heapify(heap)
+
+#     chosen: List[AgentInfo] = []
+#     for _ in range(k):
+#         load, _, aid = heapq.heappop(heap)
+#         chosen.append(agents[aid])
+#         heapq.heappush(heap, (load + 1, next(counter), aid))
+
+#     return chosen
+
+def pick_least_loaded_k_agents(agents: Dict[str, AgentInfo], k: int) -> List[AgentInfo]:
+    load = {aid: a.workload for aid, a in agents.items()}
+    chosen: List[AgentInfo] = []
+
+    for _ in range(k):
+        best_id = min(load, key=load.get)
+        chosen.append(agents[best_id])
+        load[best_id] += 1
+
+    return chosen
 
 
 def filter_failed_responses(outputs: List[Any]) -> List[Any]:
     return list(filter(lambda x: x["success"], outputs))
 
 
-def wrap_vote_prompts(choices, vote_prompt):
+def wrap_vote_prompt(choices, vote_prompt):
     prompt = vote_prompt
     for idx, choice in enumerate(choices, 1):
         prompt += f"Choice {idx}:\n{choice}\n"
@@ -61,6 +95,7 @@ class SimpleTreeTaskExecutor:
         task_id: int,
         node: TaskNode,
         get_agents: Callable[[], Awaitable[Dict[str, AgentInfo]]],
+        load_balancing: str = "random",
     ):
         self.logger = logger
         self.task_id = task_id
@@ -69,6 +104,7 @@ class SimpleTreeTaskExecutor:
         self.result = None
         self.done = False
         self.failed = False
+        self.load_balancing = load_balancing
 
     async def start(self):
         generation_prompt = self.node.description
@@ -93,9 +129,10 @@ class SimpleTreeTaskExecutor:
                 )
 
             await self.logger.info(f"[Round {round}] generating samples...")
-            workers: List[AgentInfo] = pick_random_k_agents(
+            workers: List[AgentInfo] = pick_k_agents(
                 await self.get_agents(),
                 n_samples,
+                self.load_balancing,
             )
             futures = []
             for worker in workers:
@@ -121,8 +158,8 @@ class SimpleTreeTaskExecutor:
             # TODO: remove failed workers
 
             await self.logger.info(f"[Round {round}] voting started...")
-            vote_prompt = wrap_vote_prompts(outputs, vote_prompt)
-            voters = pick_random_k_agents(await self.get_agents(), n_voters)
+            vote_prompt = wrap_vote_prompt(outputs, vote_prompt)
+            voters = pick_k_agents(await self.get_agents(), n_voters, self.load_balancing)
             futures = []
             for voter in voters:
                 body = {
