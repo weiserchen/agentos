@@ -1,10 +1,10 @@
 import asyncio
+import logging
 import multiprocessing as mp
 import os
 from multiprocessing import Process
 from typing import List
 
-import aiohttp
 import pytest
 
 from agentos.agent.proxy import AgentInfo, AgentProxy
@@ -13,7 +13,7 @@ from agentos.service.gateway import AgentGatewayServer
 from agentos.service.monitor import AgentMonitorServer
 from agentos.service.recovery import AgentRecoveryServer
 from agentos.tasks.elem import TaskStatus
-from agentos.tasks.task_descriptions import default_tasks
+from agentos.tasks.utils import http_get, http_post
 from agentos.utils.logger import AsyncLogger
 from agentos.utils.ready import is_url_ready
 from agentos.utils.sleep import random_sleep
@@ -46,7 +46,7 @@ sem_cap = 3
 
 def run_gateway():
     try:
-        gateway = AgentGatewayServer(monitor_url, dbserver_url)
+        gateway = AgentGatewayServer(monitor_url, dbserver_url, log_level=logging.DEBUG)
         gateway.run(gateway_host, gateway_port)
     except Exception as e:
         print(f"Exception: {e}")
@@ -55,7 +55,9 @@ def run_gateway():
 
 def run_monitor():
     try:
-        monitor = AgentMonitorServer(update_interval=recovery_interval)
+        monitor = AgentMonitorServer(
+            update_interval=recovery_interval, log_level=logging.DEBUG
+        )
         monitor.run(monitor_host, monitor_port)
     except Exception as e:
         print(f"Exception: {e}")
@@ -64,7 +66,7 @@ def run_monitor():
 
 def run_dbserver():
     try:
-        dbserver = AgentDatabaseServer(db_file)
+        dbserver = AgentDatabaseServer(db_file, log_level=logging.DEBUG)
         dbserver.run(dbserver_host, dbserver_port)
     except Exception as e:
         print(f"Exception: {e}")
@@ -77,6 +79,7 @@ def run_recovery():
             monitor_url,
             dbserver_url,
             update_interval=recovery_interval,
+            log_level=logging.DEBUG,
         )
         recovery.run(recovery_host, recovery_port)
     except Exception as e:
@@ -93,6 +96,7 @@ def run_proxy(id: str, domain: str, host: str, port: int):
             dbserver_url,
             update_interval=heartbeat_interval,
             sem_cap=sem_cap,
+            log_level=logging.DEBUG,
         )
         proxy.run(domain, host, port)
     except Exception as e:
@@ -106,7 +110,7 @@ async def test_coordinator_recovery():
         if os.path.exists(db_file):
             os.remove(db_file)
 
-        logger = AsyncLogger("pytest")
+        logger = AsyncLogger("pytest", level=logging.DEBUG)
         await logger.start()
 
         monitor_process = mp.Process(target=run_monitor)
@@ -155,85 +159,89 @@ async def test_coordinator_recovery():
         assert await is_url_ready(logger, gateway_url)
 
         async def execute_task():
+            n_rounds, n_samples, n_voters = 2, 5, 3
+
             task_name = "code_generation"
             task_description = "MULTITHREADED BLOCKED MATRIX MULTIPLICATION IN C++"
             data = {
                 "task_name": task_name,
                 "task_description": task_description,
+                "n_rounds": n_rounds,
+                "n_samples": n_samples,
+                "n_voters": n_voters,
             }
 
-            task_id = None
-            async with aiohttp.ClientSession() as session:
-                async with session.post(gateway_url + "/query", json=data) as response:
-                    assert response.status < 300
-                    body = await response.json()
-                    assert body["success"]
-                    task_id = body["task_id"]
+            resp = await http_post(gateway_url + "/query", data)
+            assert resp["success"]
+            body = resp["body"]
+            assert body["success"], body["err"]
+            task_id = body["task_id"]
 
             sleep_interval = 10
             while True:
-                async with aiohttp.ClientSession() as session:
-                    data = {
-                        "task_id": task_id,
-                    }
-                    async with session.get(
-                        gateway_url + "/task/status", params=data
-                    ) as response:
-                        assert response.status < 300
-                        body = await response.json()
-                        status = body["status"]
-                        if status == TaskStatus.NON_EXIST:
-                            error_str = f"task {task_id} not exist"
-                            await logger.error(f"[Task {task_id}] {error_str}")
-                            raise Exception(f"task {task_id} not exist")
-                        elif status == TaskStatus.PENDING:
-                            await logger.warning(
-                                f"[Task {task_id}] term: {body['term']} round: {body['round']} waiting for result..."
-                            )
-                            await random_sleep(sleep_interval)
-                        elif status == TaskStatus.COMPLETED:
-                            assert body["success"]
-                            result = body["result"]
-                            assert result != ""
-                            await logger.debug(f"[Task {task_id}] result: \n{result}")
-                            break
-
-                        else:
-                            raise Exception("invalid state")
-
-            async with aiohttp.ClientSession() as session:
                 data = {
                     "task_id": task_id,
                 }
-                n_rounds = default_tasks[task_name]["n_rounds"]
-                async with session.get(dbserver_url + "/task", params=data) as response:
-                    assert response.status < 300
-                    body = await response.json()
+                resp = await http_get(gateway_url + "/task/status", data)
+                assert resp["success"]
+                body = resp["body"]
+
+                status = body["status"]
+                if status == TaskStatus.NON_EXIST:
+                    error_str = f"task {task_id} not exist"
+                    await logger.error(f"[Task {task_id}] {error_str}")
+                    raise Exception(f"task {task_id} not exist")
+
+                elif status == TaskStatus.PENDING:
+                    await logger.warning(
+                        f"[Task {task_id}] term: {body['term']} round: {body['round']} waiting for result..."
+                    )
+                    await random_sleep(sleep_interval)
+
+                elif status == TaskStatus.ABORTED:
+                    await logger.warning(
+                        f"[Task {task_id}] term: {body['term']} round: {body['round']} aborted"
+                    )
+                    break
+
+                elif status == TaskStatus.COMPLETED:
                     assert body["success"]
-                    assert body["term"] == 1
-                    assert body["round"] == n_rounds - 1
-                    assert body["task_name"] == task_name
-                    assert body["task_description"] == task_description
-                    assert body["task_status"] == TaskStatus.COMPLETED
-                    assert body["task_result"] != ""
+                    result = body["result"]
+                    assert result != ""
+                    await logger.debug(f"[Task {task_id}] result: \n{result}")
+                    break
+
+                else:
+                    raise Exception("invalid state")
+
+            data = {
+                "task_id": task_id,
+            }
+            resp = await http_get(dbserver_url + "/task", data)
+            assert resp["success"]
+            body = resp["body"]
+            assert body["success"], body["err"]
+
+            assert body["term"] == 1
+            assert body["round"] == n_rounds - 1
+            assert body["task_name"] == task_name
+            assert body["task_description"] == task_description
+            assert body["task_status"] == TaskStatus.COMPLETED
+            assert body["task_result"] != ""
 
         async def kill_coordinators(task_ids: List[int]):
             for task_id in task_ids:
                 await random_sleep(30)
                 await logger.warning(f"killing task {task_id}")
-                task_agent = None
-                async with aiohttp.ClientSession() as session:
-                    data = {
-                        "task_id": task_id,
-                    }
-                    async with session.get(
-                        dbserver_url + "/task", params=data
-                    ) as response:
-                        assert response.status < 300
-                        body = await response.json()
-                        assert body["success"], body["err"]
-                        task_agent = body["task_agent"]
-                        assert task_agent is not None
+
+                data = {
+                    "task_id": task_id,
+                }
+                resp = await http_get(dbserver_url + "/task", data)
+                assert resp["success"]
+                body = resp["body"]
+                assert body["success"], body["err"]
+                task_agent = body["task_agent"]
 
                 idx = proxy_ids.index(task_agent)
                 await logger.warning(f"killing coordinator process {task_agent}")

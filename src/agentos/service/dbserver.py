@@ -16,6 +16,9 @@ class CreateTaskReq(BaseModel):
     task_agent: str
     task_name: str
     task_description: str
+    n_rounds: int
+    n_samples: int
+    n_voters: int
 
 
 class UpdateTaskStatusReq(BaseModel):
@@ -47,6 +50,9 @@ class AgentDatabaseServer:
                 req.task_agent,
                 req.task_name,
                 req.task_description,
+                req.n_rounds,
+                req.n_samples,
+                req.n_voters,
             )
 
             if task_id is None:
@@ -110,6 +116,9 @@ class AgentDatabaseServer:
                 result["task_name"] = row[4]
                 result["task_description"] = row[5]
                 result["task_result"] = row[6]
+                result["n_rounds"] = row[7]
+                result["n_samples"] = row[8]
+                result["n_voters"] = row[9]
                 result["success"] = True
 
         except Exception as e:
@@ -140,6 +149,9 @@ class AgentDatabaseServer:
                 task["task_name"] = row[5]
                 task["task_description"] = row[6]
                 task["task_result"] = row[7]
+                task["n_rounds"] = row[8]
+                task["n_samples"] = row[9]
+                task["n_voters"] = row[10]
                 agent_tasks.append(task)
 
             result["tasks"] = agent_tasks

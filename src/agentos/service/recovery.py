@@ -64,6 +64,9 @@ class AgentRecoveryServer:
             task_name = task["task_name"]
             task_description = task["task_description"]
             task_result = task["task_result"]
+            n_rounds = task["n_rounds"]
+            n_samples = task["n_samples"]
+            n_voters = task["n_voters"]
             data = {
                 "task_id": task_id,
                 "round": round,
@@ -71,6 +74,9 @@ class AgentRecoveryServer:
                 "task_name": task_name,
                 "task_description": task_description,
                 "task_result": task_result,
+                "n_rounds": n_rounds,
+                "n_samples": n_samples,
+                "n_voters": n_voters,
             }
             await self.logger.warning(f"recoverying task {task_id}")
             for i in range(MAX_RETRY):

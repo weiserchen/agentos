@@ -73,13 +73,16 @@ class AgentGatewayServer:
             "status": "gateway ok",
         }
 
-    async def query(self, e: TaskQueryEvent):
+    async def query(self, query_event: TaskQueryEvent):
         try:
             agent = pick_random_agent(self.agents)
             db_data = {
                 "task_agent": agent.id,
-                "task_name": e.task_name,
-                "task_description": e.task_description,
+                "task_name": query_event.task_name,
+                "task_description": query_event.task_description,
+                "n_rounds": query_event.n_rounds,
+                "n_samples": query_event.n_samples,
+                "n_voters": query_event.n_voters,
             }
             resp = await http_post(self.dbserver_url + "/task", db_data)
             assert resp["success"]
@@ -93,12 +96,12 @@ class AgentGatewayServer:
                 "task_id": task_id,
                 "round": 0,
                 "term": 0,
-                "task_name": e.task_name,
-                "task_description": e.task_description,
+                "task_name": query_event.task_name,
+                "task_description": query_event.task_description,
                 "task_result": "",
-                "n_rounds": e.n_rounds,
-                "n_samples": e.n_samples,
-                "n_voters": e.n_voters,
+                "n_rounds": query_event.n_rounds,
+                "n_samples": query_event.n_samples,
+                "n_voters": query_event.n_voters,
             }
             await self.logger.debug(f"query - {data}")
 
@@ -118,19 +121,26 @@ class AgentGatewayServer:
                 "success": False,
             }
 
-    async def task_update(self, e: TaskUpdateEvent):
-        await self.logger.info(f"update status - {e}")
+    async def task_update(self, update_event: TaskUpdateEvent):
+        await self.logger.info(f"update status - {update_event}")
 
         async with self.lock:
-            if e.task_id not in self.task_map:
+            if update_event.task_id not in self.task_map:
                 return {
                     "success": False,
                 }
 
-            if e.completed:
-                self.task_map[e.task_id].mark_complete(e.success, e.result)
+            if update_event.completed:
+                self.task_map[update_event.task_id].mark_complete(
+                    update_event.success,
+                    update_event.result,
+                )
             else:
-                self.task_map[e.task_id].update(e.term, e.round, e.result)
+                self.task_map[update_event.task_id].update(
+                    update_event.term,
+                    update_event.round,
+                    update_event.result,
+                )
 
             return {
                 "success": True,

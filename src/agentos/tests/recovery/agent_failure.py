@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import multiprocessing as mp
 import random
 from multiprocessing import Process
@@ -36,7 +37,7 @@ sem_cap = 3
 
 def run_monitor():
     try:
-        monitor = AgentMonitorServer()
+        monitor = AgentMonitorServer(log_level=logging.DEBUG)
         monitor.run(monitor_host, monitor_port)
     except Exception as e:
         print(f"Exception: {e}")
@@ -52,6 +53,7 @@ def run_proxy(id: str, domain: str, host: str, port: int):
             dbserver_url,
             update_interval=heartbeat_interval,
             sem_cap=sem_cap,
+            log_level=logging.DEBUG,
         )
         proxy.run(domain, host, port)
     except Exception as e:
@@ -62,7 +64,7 @@ def run_proxy(id: str, domain: str, host: str, port: int):
 @pytest.mark.asyncio
 async def test_agent_recovery():
     try:
-        logger = AsyncLogger("pytest")
+        logger = AsyncLogger("pytest", level=logging.DEBUG)
         await logger.start()
 
         monitor_process = mp.Process(target=run_monitor)

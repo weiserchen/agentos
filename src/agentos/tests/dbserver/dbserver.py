@@ -40,12 +40,18 @@ async def test_agent_dbserver():
         default_term = 0
         default_result = ""
         default_status = TaskStatus.PENDING
+        default_n_rounds = 2
+        default_n_samples = 5
+        default_n_voters = 3
         tasks = []
         for i in range(task_num):
             task = {
                 "task_agent": test_agent,
                 "task_name": f"db_task_{i}",
                 "task_description": f"db_description_{i}",
+                "n_rounds": default_n_rounds,
+                "n_samples": default_n_samples,
+                "n_voters": default_n_voters,
             }
             task_id = None
             resp = await http_post(dbserver_url + "/task", task)
@@ -88,6 +94,9 @@ async def test_agent_dbserver():
             assert body["task_name"] == task["task_name"]
             assert body["task_description"] == task["task_description"]
             assert body["task_result"] == task["task_result"]
+            assert body["n_rounds"] == task["n_rounds"]
+            assert body["n_samples"] == task["n_samples"]
+            assert body["n_voters"] == task["n_voters"]
 
         data = {
             "task_agent": "non-exist agent",
@@ -120,6 +129,9 @@ async def test_agent_dbserver():
             assert db_task["task_name"] == task["task_name"]
             assert db_task["task_description"] == task["task_description"]
             assert db_task["task_result"] == task["task_result"]
+            assert db_task["n_rounds"] == task["n_rounds"]
+            assert db_task["n_samples"] == task["n_samples"]
+            assert db_task["n_voters"] == task["n_voters"]
 
         curr_round = 0
         # update task progress (round 0)
@@ -211,6 +223,9 @@ async def test_agent_dbserver():
             assert body["task_name"] == task["task_name"]
             assert body["task_description"] == task["task_description"]
             assert body["task_result"] == task["task_result"]
+            assert body["n_rounds"] == task["n_rounds"]
+            assert body["n_samples"] == task["n_samples"]
+            assert body["n_voters"] == task["n_voters"]
 
         # (failed) update task status (expired term)
         for i in range(task_num):

@@ -1,3 +1,4 @@
+import logging
 from typing import Awaitable, Callable, Dict
 
 from agentos.tasks.elem import TaskNode
@@ -16,6 +17,7 @@ class SingleNodeCoordinator:
         get_agents: Callable[[], Awaitable[Dict[str, AgentInfo]]],
         load_balancing: str = "random",
         voting_strategy: str = "naive",
+        log_level: int = logging.WARNING,
     ):
         self.task_id = task_id
         self.round = round
@@ -24,7 +26,7 @@ class SingleNodeCoordinator:
         self.result = result
         self.task_node = task_node
         self.get_agents = get_agents
-        self.logger = AsyncLogger(f"task-{task_id}-coordinator")
+        self.logger = AsyncLogger(f"task-{task_id}-coordinator", level=log_level)
         self.success = False
         self.completed = False
         self.load_balancing = load_balancing
