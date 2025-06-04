@@ -57,7 +57,7 @@ class SingleNodeCoordinator:
         except Exception as e:
             self.success = False
             self.completed = True
-            err_str = f"coordinator - exception: {e}"
+            err_str = f"executor - exception: {e}"
             await self.logger.error(err_str)
             self.result = err_str
         finally:

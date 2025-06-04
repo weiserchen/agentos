@@ -21,7 +21,7 @@ def run_monitor():
 @pytest.mark.asyncio
 async def test_agent_monitor():
     try:
-        logger = AsyncLogger("pytest")
+        logger = AsyncLogger("pytest", level=logging.DEBUG)
         await logger.start()
 
         monitor_process = mp.Process(target=run_monitor)

@@ -61,7 +61,7 @@ async def test_agent_monitor_proxy():
         monitor_process = None
         proxy_processes: List[Process] = []
 
-        logger = AsyncLogger("pytest")
+        logger = AsyncLogger("pytest", level=logging.DEBUG)
         await logger.start()
 
         monitor_process = mp.Process(target=run_monitor)

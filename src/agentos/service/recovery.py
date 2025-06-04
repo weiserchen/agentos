@@ -6,14 +6,15 @@ import traceback
 from contextlib import asynccontextmanager
 from typing import Dict
 
-import aiohttp
 import uvicorn
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.exceptions import RequestValidationError, ResponseValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from agentos.tasks.elem import TaskStatus
 from agentos.tasks.executor import AgentInfo
-from agentos.tasks.utils import http_post_with_exception
+from agentos.tasks.utils import http_get, http_post_with_exception, http_put
 from agentos.utils.logger import AsyncLogger
 from agentos.utils.sleep import random_sleep
 
@@ -100,20 +101,14 @@ class AgentRecoveryServer:
         try:
             await self.logger.warning(f"recovering agent {agent.id}...")
 
-            tasks = []
             data = {
                 "task_agent": agent.id,
             }
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    self.dbserver_url + "/tasks/agent", params=data
-                ) as response:
-                    assert response.status < 300, (
-                        f"error response status code: {response.status}"
-                    )
-                    body = await response.json()
-                    assert body["success"], body["err"]
-                    tasks = body["tasks"]
+            resp = await http_get(self.dbserver_url + "/tasks/agent", data)
+            assert resp["success"]
+            body = resp["body"]
+            assert body["success"], body["err"]
+            tasks = body["tasks"]
 
             futures = []
             for task in tasks:
@@ -132,15 +127,10 @@ class AgentRecoveryServer:
                         "task_result": "aborted",
                     }
                     try:
-                        async with aiohttp.ClientSession() as session:
-                            async with session.put(
-                                self.dbserver_url + "/task/status", json=data
-                            ) as response:
-                                assert response.status < 300, (
-                                    f"error response status code: {response.status}"
-                                )
-                                body = await response.json()
-                                assert body["success"], body["err"]
+                        resp = await http_put(self.dbserver_url + "/task/status", data)
+                        assert resp["success"]
+                        body = resp["body"]
+                        assert body["success"], body["err"]
 
                         await self.logger.warning(f"[Task {task['task_id']}] aborted")
 
@@ -163,31 +153,30 @@ class AgentRecoveryServer:
     async def update_membership(self):
         while True:
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(
-                        self.monitor_url + "/agent/list"
-                    ) as response:
-                        assert response.status < 300
-                        body = await response.json()
-                        agents = body["agents"]
-                        new_agents = dict()
-                        for id, agent in agents.items():
-                            agent_info = AgentInfo(
-                                id=id,
-                                addr=agent["addr"],
-                                workload=agent["workload"],
-                            )
-                            new_agents[id] = agent_info
+                resp = await http_get(self.monitor_url + "/agent/list")
+                assert resp["success"]
+                body = resp["body"]
+                assert body["success"], body["err"]
 
-                        await self.logger.debug(f"update_membership: {new_agents}")
-                        async with self.lock:
-                            for id, agent in self.agents.items():
-                                if id not in new_agents:
-                                    if id not in self.recovering_set:
-                                        self.recovering_set.add(id)
-                                        asyncio.create_task(self.recover_agent(agent))
+                agents = body["agents"]
+                new_agents = dict()
+                for id, agent in agents.items():
+                    agent_info = AgentInfo(
+                        id=id,
+                        addr=agent["addr"],
+                        workload=agent["workload"],
+                    )
+                    new_agents[id] = agent_info
 
-                            self.agents = new_agents
+                await self.logger.debug(f"update_membership: {new_agents}")
+                async with self.lock:
+                    for id, agent in self.agents.items():
+                        if id not in new_agents:
+                            if id not in self.recovering_set:
+                                self.recovering_set.add(id)
+                                asyncio.create_task(self.recover_agent(agent))
+
+                    self.agents = new_agents
 
             except Exception as e:
                 await self.logger.error(f"update_membership - exception: {e}")
@@ -206,5 +195,32 @@ class AgentRecoveryServer:
         router.get("/ready")(self.ready)
         app = FastAPI(lifespan=self.lifespan)
         app.include_router(router)
+
+        @app.exception_handler(RequestValidationError)
+        async def validation_exception_handler(
+            request: Request, exc: RequestValidationError
+        ):
+            await self.logger.error(
+                f"422 Validation Error on {request.method} {request.url}"
+            )
+            await self.logger.error(f"Detail: {exc.errors()}")
+            await self.logger.error(f"Body: {exc.body}")
+            return JSONResponse(
+                status_code=422,
+                content={"detail": exc.errors()},
+            )
+
+        @app.exception_handler(ResponseValidationError)
+        async def response_validation_exception_handler(
+            request: Request, exc: ResponseValidationError
+        ):
+            await self.logger.error(
+                f"500 Response Validation Error on {request.method} {request.url}"
+            )
+            await self.logger.error(f"Detail: {exc.errors()}")
+            return JSONResponse(
+                status_code=500,
+                content={"detail": exc.errors()},
+            )
 
         uvicorn.run(app, host=host, port=port, log_level=self.log_level)

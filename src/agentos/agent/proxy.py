@@ -213,10 +213,9 @@ class AgentProxy:
                         task_event.round,
                         task_event.term,
                         task_event.task_result,
-                        task_event.task_id,
                         task_node,
                         get_agents,
-                        self.load_balancing,
+                        load_balancing=self.load_balancing,
                     )
                 coord = self.coord_map[task_event.task_id]
 

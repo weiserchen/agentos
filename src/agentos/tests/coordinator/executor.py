@@ -61,7 +61,7 @@ def run_proxy(id: str, domain: str, host: str, port: int):
 @pytest.mark.asyncio
 async def test_executor():
     try:
-        logger = AsyncLogger("pytest")
+        logger = AsyncLogger("pytest", level=logging.DEBUG)
         await logger.start()
 
         monitor_process = mp.Process(target=run_monitor)

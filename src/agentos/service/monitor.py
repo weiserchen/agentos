@@ -5,7 +5,9 @@ from contextlib import asynccontextmanager
 from typing import Dict
 
 import uvicorn
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.exceptions import RequestValidationError, ResponseValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from agentos.tasks.executor import AgentInfo
@@ -113,5 +115,32 @@ class AgentMonitorServer:
         router.get("/agent/list")(self.get_agents)
         app = FastAPI(lifespan=self.lifespan)
         app.include_router(router)
+
+        @app.exception_handler(RequestValidationError)
+        async def validation_exception_handler(
+            request: Request, exc: RequestValidationError
+        ):
+            await self.logger.error(
+                f"422 Validation Error on {request.method} {request.url}"
+            )
+            await self.logger.error(f"Detail: {exc.errors()}")
+            await self.logger.error(f"Body: {exc.body}")
+            return JSONResponse(
+                status_code=422,
+                content={"detail": exc.errors()},
+            )
+
+        @app.exception_handler(ResponseValidationError)
+        async def response_validation_exception_handler(
+            request: Request, exc: ResponseValidationError
+        ):
+            await self.logger.error(
+                f"500 Response Validation Error on {request.method} {request.url}"
+            )
+            await self.logger.error(f"Detail: {exc.errors()}")
+            return JSONResponse(
+                status_code=500,
+                content={"detail": exc.errors()},
+            )
 
         uvicorn.run(app, host=host, port=port, log_level=self.log_level)

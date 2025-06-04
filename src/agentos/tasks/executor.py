@@ -216,13 +216,17 @@ class SimpleTreeTaskExecutor:
         outputs: list[str] = []
         for r in results:
             if isinstance(r, Exception) or not r.get("success"):
-                self.failed = True
-                self.completed = True
-                self.result = (
+                await self.logger.error(
                     f"Worker Failure: {r.get('body', {}).get('error', 'Unknown Error')}"
                 )
-                return []
-            outputs.append(r["body"]["result"])
+            else:
+                outputs.append(r["body"]["result"])
+
+        if len(outputs) == 0:
+            self.failed = True
+            self.completed = True
+            self.result = "All worker failed"
+
         return outputs
 
     async def _gather_votes(
@@ -250,13 +254,21 @@ class SimpleTreeTaskExecutor:
             for v in voters
         ]
 
+        votes = []
         if self.voting_strategy == "naive":
-            return await gather_votes_naive(factories, outputs)
+            votes = await gather_votes_naive(factories, outputs)
         elif self.voting_strategy == "early_majority":
             majority = self.n_voters // 2 + 1
-            return await gather_votes_until_majority(factories, outputs, majority)
+            votes = await gather_votes_until_majority(factories, outputs, majority)
         else:
             raise ValueError(f"Unknown voting strategy: {self.voting_strategy}")
+
+        if len(votes) == 0:
+            self.failed = True
+            self.completed = True
+            self.result = "All voters failed"
+
+        return votes
 
     async def run(self):
         gen_prompt_base = self.node.description
@@ -287,6 +299,7 @@ class SimpleTreeTaskExecutor:
 
             outputs = await self._generate_samples(gen_prompt, stop_token, self.round)
             if self.failed:
+                yield
                 return
 
             await self.logger.info(
@@ -295,6 +308,10 @@ class SimpleTreeTaskExecutor:
 
             vote_prompt = wrap_vote_prompt(outputs, vote_prompt_base)
             votes = await self._gather_votes(vote_prompt, outputs, self.round)
+            if self.failed:
+                yield
+                return
+
             chosen_output = get_most_voted_output(votes, outputs)
             await self.logger.info(f"[Round {self.round}] voting finished")
 

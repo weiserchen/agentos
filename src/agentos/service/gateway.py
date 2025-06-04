@@ -4,12 +4,14 @@ import random
 from contextlib import asynccontextmanager
 from typing import Dict
 
-import aiohttp
 import uvicorn
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.exceptions import RequestValidationError, ResponseValidationError
+from fastapi.responses import JSONResponse
 
 from agentos.tasks.elem import TaskQueryEvent, TaskStatus, TaskUpdateEvent
 from agentos.tasks.executor import AgentInfo
+from agentos.tasks.utils import http_get, http_post, http_put
 from agentos.utils.logger import AsyncLogger
 from agentos.utils.sleep import random_sleep
 
@@ -73,45 +75,42 @@ class AgentGatewayServer:
 
     async def query(self, e: TaskQueryEvent):
         try:
-            async with aiohttp.ClientSession() as session:
-                agent = pick_random_agent(self.agents)
-                db_data = {
-                    "task_agent": agent.id,
-                    "task_name": e.task_name,
-                    "task_description": e.task_description,
-                }
-                task_id = None
-                async with session.post(
-                    self.dbserver_url + "/task", json=db_data
-                ) as response:
-                    assert response.status < 300
-                    body = await response.json()
-                    assert body["success"]
-                    task_id = body["task_id"]
-                    assert task_id is not None
+            agent = pick_random_agent(self.agents)
+            db_data = {
+                "task_agent": agent.id,
+                "task_name": e.task_name,
+                "task_description": e.task_description,
+            }
+            resp = await http_post(self.dbserver_url + "/task", db_data)
+            assert resp["success"]
+            body = resp["body"]
+            assert body["success"], body["err"]
+            task_id = body["task_id"]
 
-                await self.logger.debug(f"task {task_id} created")
+            await self.logger.debug(f"task {task_id} created")
 
-                data = {
-                    "task_id": task_id,
-                    "round": 0,
-                    "term": 0,
-                    "task_name": e.task_name,
-                    "task_description": e.task_description,
-                    "task_result": "",
-                }
-                await self.logger.debug(f"query - {data}")
-                async with session.post(
-                    agent.addr + "/coordinator", json=data
-                ) as response:
-                    assert response.status < 300
-                    body = await response.json()
-                    assert body["success"]
-                    self.task_map[task_id] = TaskResult(task_id)
-                    return {
-                        "success": True,
-                        "task_id": task_id,
-                    }
+            data = {
+                "task_id": task_id,
+                "round": 0,
+                "term": 0,
+                "task_name": e.task_name,
+                "task_description": e.task_description,
+                "task_result": "",
+                "n_rounds": e.n_rounds,
+                "n_samples": e.n_samples,
+                "n_voters": e.n_voters,
+            }
+            await self.logger.debug(f"query - {data}")
+
+            resp = await http_post(agent.addr + "/coordinator", data)
+            assert resp["success"]
+            body = resp["body"]
+            assert body["success"], body["err"]
+            self.task_map[task_id] = TaskResult(task_id)
+            return {
+                "success": True,
+                "task_id": task_id,
+            }
 
         except Exception as err:
             await self.logger.error(f"query - exception: {err}")
@@ -155,47 +154,44 @@ class AgentGatewayServer:
                     }
 
         try:
-            async with aiohttp.ClientSession() as session:
-                data = {
-                    "task_id": task_id,
+            data = {
+                "task_id": task_id,
+            }
+            resp = http_put(self.dbserver_url + "/task", data)
+            assert resp["success"]
+            body = resp["body"]
+            assert body["success"], body["err"]
+
+            task_status = body["task_status"]
+            success = body["success"]
+            result = body["result"]
+            term = body["term"]
+            round = body["round"]
+            result = TaskResult(task_id)
+            if task_status == TaskStatus.COMPLETED:
+                result.mark_complete(success, result)
+            elif task_status == TaskStatus.PENDING:
+                result.update(term, round, result)
+            elif task_status == TaskStatus.ABORTED:
+                result.mark_aborted()
+            else:
+                raise Exception("invalid state")
+
+            async with self.lock:
+                self.task_map[task_id] = result
+
+            if not result.completed:
+                return {
+                    "status": result.status,
+                    "term": result.term,
+                    "round": result.round,
                 }
-                async with session.put(
-                    self.dbserver_url + "/task", params=data
-                ) as response:
-                    assert response.status < 300
-                    body = await response.json()
-                    assert body["success"], body["err"]
-
-                    task_status = body["task_status"]
-                    success = body["success"]
-                    result = body["result"]
-                    term = body["term"]
-                    round = body["round"]
-                    result = TaskResult(task_id)
-                    if task_status == TaskStatus.COMPLETED:
-                        result.mark_complete(success, result)
-                    elif task_status == TaskStatus.PENDING:
-                        result.update(term, round, result)
-                    elif task_status == TaskStatus.ABORTED:
-                        result.mark_aborted()
-                    else:
-                        raise Exception("invalid state")
-
-                    async with self.lock:
-                        self.task_map[task_id] = result
-
-                    if not result.completed:
-                        return {
-                            "status": result.status,
-                            "term": result.term,
-                            "round": result.round,
-                        }
-                    else:
-                        return {
-                            "status": result.status,
-                            "success": result.success,
-                            "result": result.result,
-                        }
+            else:
+                return {
+                    "status": result.status,
+                    "success": result.success,
+                    "result": result.result,
+                }
 
         except Exception as e:
             err_str = f"task_status - exception: {e}"
@@ -209,25 +205,23 @@ class AgentGatewayServer:
         sleep_interval = 10
         while True:
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(
-                        self.monitor_url + "/agent/list"
-                    ) as response:
-                        assert response.status < 300
-                        body = await response.json()
-                        agents = body["agents"]
-                        new_agents = dict()
-                        for id, agent in agents.items():
-                            agent_info = AgentInfo(
-                                id=id,
-                                addr=agent["addr"],
-                                workload=agent["workload"],
-                            )
-                            new_agents[id] = agent_info
+                resp = await http_get(self.monitor_url + "/agent/list")
+                assert resp["success"]
+                body = resp["body"]
+                assert body["success"]
+                agents = body["agents"]
+                new_agents = dict()
+                for id, agent in agents.items():
+                    agent_info = AgentInfo(
+                        id=id,
+                        addr=agent["addr"],
+                        workload=agent["workload"],
+                    )
+                    new_agents[id] = agent_info
 
-                        await self.logger.debug(f"update_membership: {new_agents}")
-                        async with self.lock:
-                            self.agents = new_agents
+                await self.logger.debug(f"update_membership: {new_agents}")
+                async with self.lock:
+                    self.agents = new_agents
 
             except Exception as e:
                 await self.logger.error(f"update_membership - exception: {e}")
@@ -249,4 +243,32 @@ class AgentGatewayServer:
         router.post("/task/update")(self.task_update)
         app = FastAPI(lifespan=self.lifespan)
         app.include_router(router)
+
+        @app.exception_handler(RequestValidationError)
+        async def validation_exception_handler(
+            request: Request, exc: RequestValidationError
+        ):
+            await self.logger.error(
+                f"422 Validation Error on {request.method} {request.url}"
+            )
+            await self.logger.error(f"Detail: {exc.errors()}")
+            await self.logger.error(f"Body: {exc.body}")
+            return JSONResponse(
+                status_code=422,
+                content={"detail": exc.errors()},
+            )
+
+        @app.exception_handler(ResponseValidationError)
+        async def response_validation_exception_handler(
+            request: Request, exc: ResponseValidationError
+        ):
+            await self.logger.error(
+                f"500 Response Validation Error on {request.method} {request.url}"
+            )
+            await self.logger.error(f"Detail: {exc.errors()}")
+            return JSONResponse(
+                status_code=500,
+                content={"detail": exc.errors()},
+            )
+
         uvicorn.run(app, host=host, port=port, log_level=self.log_level)
