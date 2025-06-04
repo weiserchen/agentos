@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -26,10 +27,11 @@ class UpdateTaskStatusReq(BaseModel):
 
 
 class AgentDatabaseServer:
-    def __init__(self, db_file):
+    def __init__(self, db_file, log_level: int = logging.WARNING):
         self.db = AgentDatabase(db_file)
         self.lock = asyncio.Lock()
-        self.logger = AsyncLogger("dbserver")
+        self.log_level = log_level
+        self.logger = AsyncLogger("dbserver", level=log_level)
 
     async def ready(self):
         return {
@@ -182,4 +184,4 @@ class AgentDatabaseServer:
                 content={"detail": exc.errors()},
             )
 
-        uvicorn.run(app, host=host, port=port)
+        uvicorn.run(app, host=host, port=port, log_level=self.log_level)

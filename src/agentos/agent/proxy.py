@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from typing import Any, Dict
 
@@ -99,6 +100,7 @@ class AgentProxy:
         load_balancing: str = "random",
         scheduling_policy: str = "fifo",
         voting_strategy: str = "naive",
+        log_level: int = logging.WARNING,
     ):
         self.id = id
         self.my_url = ""
@@ -114,7 +116,8 @@ class AgentProxy:
         self.agents_view: Dict[str, AgentInfo] = dict()
         self.lock = asyncio.Lock()
         self.semaphore = asyncio.Semaphore(sem_cap)
-        self.logger = AsyncLogger(id)
+        self.log_level = log_level
+        self.logger = AsyncLogger(id, level=log_level)
         self.load_balancing = load_balancing
         self.voting_strategy = voting_strategy
 
@@ -369,4 +372,4 @@ class AgentProxy:
                 content={"detail": exc.errors()},
             )
 
-        uvicorn.run(app, host=host, port=port, log_level="warning")
+        uvicorn.run(app, host=host, port=port, log_level=self.log_level)

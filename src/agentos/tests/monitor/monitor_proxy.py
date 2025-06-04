@@ -1,12 +1,13 @@
+import logging
 import multiprocessing as mp
 from multiprocessing import Process
 from typing import List
 
-import aiohttp
 import pytest
 
 from agentos.agent.proxy import AgentProxy
 from agentos.service.monitor import AgentMonitorServer
+from agentos.tasks.utils import http_get
 from agentos.utils.logger import AsyncLogger
 from agentos.utils.ready import is_url_ready
 from agentos.utils.sleep import random_sleep
@@ -31,7 +32,7 @@ heartbeat_interval = 1
 
 def run_monitor():
     try:
-        monitor = AgentMonitorServer()
+        monitor = AgentMonitorServer(log_level=logging.DEBUG)
         monitor.run(monitor_host, monitor_port)
     except Exception as e:
         print(f"Exception: {e}")
@@ -46,6 +47,7 @@ def run_proxy(id: str, domain: str, host: str, port: int):
             monitor_url,
             dbserver_url,
             update_interval=heartbeat_interval,
+            log_level=logging.DEBUG,
         )
         proxy.run(domain, host, port)
     except Exception as e:
@@ -91,40 +93,40 @@ async def test_agent_monitor_proxy():
         MAX_RETRY = 3
         for i in range(MAX_RETRY):
             try:
-                async with aiohttp.ClientSession() as session:
-                    # check the monitor has all proxies info
-                    async with session.get(monitor_url + "/agent/list") as response:
-                        assert response.status < 300
-                        body = await response.json()
-                        agents = body["agents"]
-                        assert len(agents) == proxies_num
+                resp = await http_get(monitor_url + "/agent/list")
+                assert resp["success"]
+                body = resp["body"]
+                assert body["success"]
 
-                        for i in range(proxies_num):
-                            proxy_id = proxy_ids[i]
-                            proxy_url = proxy_urls[i]
-                            assert proxy_id in agents
-                            proxy = agents[proxy_id]
-                            assert proxy["addr"] == proxy_url
+                agents = body["agents"]
+                assert len(agents) == proxies_num
 
-                    # check all proxies share the same membership view
-                    for i in range(proxies_num):
-                        proxy_id = proxy_ids[i]
-                        proxy_url = proxy_urls[i]
-                        async with session.get(
-                            proxy_url + "/membership/view"
-                        ) as response:
-                            assert response.status < 300
-                            body = await response.json()
-                            agents = body["agents"]
-                            assert len(agents) == proxies_num
+                for i in range(proxies_num):
+                    proxy_id = proxy_ids[i]
+                    proxy_url = proxy_urls[i]
+                    assert proxy_id in agents
+                    proxy = agents[proxy_id]
+                    assert proxy["addr"] == proxy_url
 
-                            for j in range(proxies_num):
-                                agent_id = proxy_ids[j]
-                                agent_url = proxy_urls[j]
-                                assert agent_id in agents
-                                agent = agents[agent_id]
-                                assert agent["id"] == agent_id
-                                assert agent["addr"] == agent_url
+                # check all proxies share the same membership view
+                for i in range(proxies_num):
+                    proxy_id = proxy_ids[i]
+                    proxy_url = proxy_urls[i]
+                    resp = await http_get(proxy_url + "/membership/view")
+                    assert resp["success"]
+                    body = resp["body"]
+                    assert body["success"]
+
+                    agents = body["agents"]
+                    assert len(agents) == proxies_num
+
+                    for j in range(proxies_num):
+                        agent_id = proxy_ids[j]
+                        agent_url = proxy_urls[j]
+                        assert agent_id in agents
+                        agent = agents[agent_id]
+                        assert agent["id"] == agent_id
+                        assert agent["addr"] == agent_url
 
             except Exception as e:
                 if i == MAX_RETRY - 1:

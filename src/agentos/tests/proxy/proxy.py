@@ -1,10 +1,11 @@
+import logging
 import multiprocessing as mp
 
-import aiohttp
 import pytest
 
 from agentos.agent.proxy import AgentProxy
 from agentos.service.monitor import AgentMonitorServer
+from agentos.tasks.utils import http_get, http_post
 from agentos.utils.logger import AsyncLogger
 from agentos.utils.ready import is_url_ready
 from agentos.utils.sleep import random_sleep
@@ -31,7 +32,7 @@ heartbeat_interval = 5
 
 def run_monitor():
     try:
-        monitor = AgentMonitorServer()
+        monitor = AgentMonitorServer(log_level=logging.DEBUG)
         monitor.run(monitor_host, monitor_port)
     except Exception as e:
         print(f"Exception: {e}")
@@ -46,6 +47,7 @@ def run_proxy(id: str, domain: str, host: str, port: int):
             monitor_url,
             dbserver_url,
             update_interval=heartbeat_interval,
+            log_level=logging.DEBUG,
         )
         proxy.run(domain, host, port)
     except Exception as e:
@@ -56,7 +58,7 @@ def run_proxy(id: str, domain: str, host: str, port: int):
 @pytest.mark.asyncio
 async def test_agent_proxy():
     try:
-        logger = AsyncLogger("pytest")
+        logger = AsyncLogger("pytest", level=logging.DEBUG)
         await logger.start()
 
         monitor_process = mp.Process(target=run_monitor)
@@ -77,34 +79,36 @@ async def test_agent_proxy():
 
         MAX_RETRY = 3
         view_ok = False
-        async with aiohttp.ClientSession() as session:
-            for i in range(MAX_RETRY):
-                async with session.get(proxy_url + "/membership/view") as response:
-                    assert response.status < 300
-                    body = await response.json()
-                    agents = body["agents"]
-                    await logger.info(f"agents: {agents}")
-                    if len(agents) == 1:
-                        view_ok = True
-                        break
 
-                    await random_sleep(0.5)
+        for _ in range(MAX_RETRY):
+            resp = await http_get(proxy_url + "/membership/view")
+            body = resp["body"]
+            agents = body["agents"]
+            await logger.info(f"agents: {agents}")
+            if len(agents) == 1:
+                view_ok = True
+                break
+
+            await random_sleep(0.5)
 
         assert view_ok
 
-        async with aiohttp.ClientSession() as session:
-            data = {
-                "task_id": 1,
-                "task_round": 0,
-                "task_action": "generation",
-                "task_description": "A travel plan to Irvine",
-                "task_stop": None,
-            }
-            async with session.post(proxy_url + "/agent/call", json=data) as response:
-                assert response.status < 300
-                body = await response.json()
-                result = body["result"]
-                await logger.info(f"Result: \n{result}")
+        data = {
+            "task_id": 1,
+            "task_round": 0,
+            "task_action": "generation",
+            "task_description": "A travel plan to Irvine",
+            "task_stop": None,
+            "n_samples": 5,
+            "n_voters": 3,
+            "total_rounds": 2,
+            "total_llm_calls": 16,
+        }
+        resp = await http_post(proxy_url + "/agent/call", data)
+        assert resp["success"]
+        body = resp["body"]
+        result = body["result"]
+        await logger.info(f"Result: \n{result}")
 
     finally:
         await logger.stop()

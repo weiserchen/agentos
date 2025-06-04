@@ -121,6 +121,23 @@ async def http_post(url: str, body: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+async def http_put(url: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    JSON PUT helper that reuses one ClientSession for the whole process.
+    """
+    session = await _get_session()
+    result: Dict[str, Any] = {}
+    try:
+        async with session.put(url, json=body) as resp:
+            result["status"] = resp.status
+            result["body"] = await resp.json()
+            result["success"] = resp.status < 300
+    except Exception as e:
+        result["success"] = False
+        result["error"] = repr(e)
+    return result
+
+
 async def http_get(url: str, params: Dict | None = None) -> Dict[str, Any]:
     """
     JSON GET helper that reuses one ClientSession for the whole process.
@@ -129,6 +146,23 @@ async def http_get(url: str, params: Dict | None = None) -> Dict[str, Any]:
     result: Dict[str, Any] = {}
     try:
         async with session.get(url, params=params) as resp:
+            result["status"] = resp.status
+            result["body"] = await resp.json()
+            result["success"] = resp.status < 300
+    except Exception as e:
+        result["success"] = False
+        result["error"] = repr(e)
+    return result
+
+
+async def http_delete(url: str) -> Dict[str, Any]:
+    """
+    JSON GET helper that reuses one ClientSession for the whole process.
+    """
+    session = await _get_session()
+    result: Dict[str, Any] = {}
+    try:
+        async with session.delete(url) as resp:
             result["status"] = resp.status
             result["body"] = await resp.json()
             result["success"] = resp.status < 300

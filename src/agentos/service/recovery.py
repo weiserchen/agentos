@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import random
 import sys
 import traceback
@@ -24,14 +25,21 @@ class AgentStatusRequest(BaseModel):
 class AgentRecoveryServer:
     agents: Dict[str, AgentInfo]
 
-    def __init__(self, monitor_url: str, dbserver_url: str, update_interval: int = 10):
+    def __init__(
+        self,
+        monitor_url: str,
+        dbserver_url: str,
+        update_interval: int = 10,
+        log_level: int = logging.WARNING,
+    ):
         self.monitor_url = monitor_url
         self.dbserver_url = dbserver_url
         self.update_interval = update_interval
         self.agents = dict()
         self.recovering_set = set()
         self.lock = asyncio.Lock()
-        self.logger = AsyncLogger("recovery")
+        self.log_level = log_level
+        self.logger = AsyncLogger("recovery", level=log_level)
 
     async def ready(self):
         return {
@@ -199,4 +207,4 @@ class AgentRecoveryServer:
         app = FastAPI(lifespan=self.lifespan)
         app.include_router(router)
 
-        uvicorn.run(app, host=host, port=port)
+        uvicorn.run(app, host=host, port=port, log_level=self.log_level)

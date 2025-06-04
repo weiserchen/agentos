@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import random
 from contextlib import asynccontextmanager
 from typing import Dict
@@ -53,13 +54,16 @@ class TaskResult:
 
 
 class AgentGatewayServer:
-    def __init__(self, monitor_url: str, dbserver_url: str):
+    def __init__(
+        self, monitor_url: str, dbserver_url: str, log_level: int = logging.WARNING
+    ):
         self.monitor_url = monitor_url
         self.dbserver_url = dbserver_url
         self.task_map: Dict[int, TaskResult] = dict()
         self.lock = asyncio.Lock()
         self.agents: Dict[str, AgentInfo] = dict()
-        self.logger = AsyncLogger("gateway")
+        self.log_level = log_level
+        self.logger = AsyncLogger("gateway", level=log_level)
         self.lock = asyncio.Lock()
 
     async def ready(self):
@@ -245,4 +249,4 @@ class AgentGatewayServer:
         router.post("/task/update")(self.task_update)
         app = FastAPI(lifespan=self.lifespan)
         app.include_router(router)
-        uvicorn.run(app, host=host, port=port)
+        uvicorn.run(app, host=host, port=port, log_level=self.log_level)

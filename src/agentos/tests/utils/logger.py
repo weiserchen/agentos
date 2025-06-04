@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import List
 
 import pytest
@@ -15,8 +16,8 @@ async def test_async_logger():
 
     input_size = 100
     out_tasks: List[QueueTask] = []
-    producer_logger = AsyncLogger("producer")
-    consumer_logger = AsyncLogger("consumer")
+    producer_logger = AsyncLogger("producer", level=logging.DEBUG)
+    consumer_logger = AsyncLogger("consumer", level=logging.DEBUG)
 
     await producer_logger.start()
     await consumer_logger.start()

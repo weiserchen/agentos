@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 from contextlib import asynccontextmanager
 from typing import Dict
@@ -19,13 +20,14 @@ class AgentStatusRequest(BaseModel):
 class AgentMonitorServer:
     agents: Dict[str, AgentInfo]
 
-    def __init__(self, update_interval: int = 10):
+    def __init__(self, update_interval: int = 10, log_level: int = logging.WARNING):
         self.update_interval = update_interval
         self.alive_timeout = update_interval * 3
         self.agents = dict()
         self.last_update_time = dict()
         self.lock = asyncio.Lock()
-        self.logger = AsyncLogger("monitor")
+        self.log_level = log_level
+        self.logger = AsyncLogger("monitor", level=log_level)
 
     async def ready(self):
         return {
@@ -37,12 +39,14 @@ class AgentMonitorServer:
         async with self.lock:
             await self.logger.info(f"{api_path} - {self.agents}")
             return {
+                "success": True,
                 "agents": self.agents,
             }
 
     async def get_agent(self, id: str):
         async with self.lock:
             return {
+                "success": True,
                 "agent_info": self.agents.get(id),
             }
 
@@ -74,6 +78,7 @@ class AgentMonitorServer:
                 }
 
             del self.agents[id]
+            del self.last_update_time[id]
             return {
                 "success": True,
             }
@@ -109,4 +114,4 @@ class AgentMonitorServer:
         app = FastAPI(lifespan=self.lifespan)
         app.include_router(router)
 
-        uvicorn.run(app, host=host, port=port, log_level="warning")
+        uvicorn.run(app, host=host, port=port, log_level=self.log_level)

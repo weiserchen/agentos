@@ -1,3 +1,4 @@
+import logging
 import multiprocessing as mp
 from multiprocessing import Process
 from typing import List
@@ -33,7 +34,7 @@ sem_cap = 3
 
 def run_monitor():
     try:
-        monitor = AgentMonitorServer()
+        monitor = AgentMonitorServer(log_level=logging.DEBUG)
         monitor.run(monitor_host, monitor_port)
     except Exception as e:
         print(f"Exception: {e}")
@@ -49,6 +50,7 @@ def run_proxy(id: str, domain: str, host: str, port: int):
             dbserver_url,
             update_interval=heartbeat_interval,
             sem_cap=sem_cap,
+            log_level=logging.DEBUG,
         )
         proxy.run(domain, host, port)
     except Exception as e:
