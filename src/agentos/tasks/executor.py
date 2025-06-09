@@ -217,7 +217,7 @@ class SimpleTreeTaskExecutor:
         for r in results:
             if isinstance(r, Exception) or not r.get("success"):
                 await self.logger.error(
-                    f"Worker Failure: {r.get('body', {}).get('error', 'Unknown Error')}"
+                    f"Worker Failure for task [{self.task_id}]: {r.get('body', {}).get('error', 'Unknown Error')}"
                 )
             else:
                 outputs.append(r["body"]["result"])
@@ -324,10 +324,9 @@ class SimpleTreeTaskExecutor:
                     yield
                     return
                 else:
-                    self.failed = True
-                    self.result = (
-                        chosen_output.strip()
-                    )  # Not catastrophic to return the whole output
+                    # Not catastrophic to return the whole output
+                    # self.failed = True
+                    self.result = (chosen_output.strip())  
                     yield
                     return
 

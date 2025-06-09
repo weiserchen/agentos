@@ -127,7 +127,7 @@ class AgentProxy:
         elif (
             self.scheduling_policy == "arrival_priority"
             or self.scheduling_policy == "sjf"
-            or self.scheduling_policy == "ltrf"
+            or self.scheduling_policy == "srtf"
         ):
             self.policy = PriorityPolicy(queue_cap)
         else:

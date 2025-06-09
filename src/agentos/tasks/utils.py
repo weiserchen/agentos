@@ -49,18 +49,20 @@ async def _get_session() -> aiohttp.ClientSession:
 #         result["err"] = err_str
 #         return result
 
-
-async def http_post_with_exception(url: str, data: Dict, name: str):
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, json=data) as response:
-            assert response.status < 300, (
-                f"{name} update - error status code: {response.status} - {data}"
-            )
-            body = await response.json()
-            assert body["success"], (
-                f"{name} update - request not successful - {body['err']}"
-            )
-
+async def http_post_with_exception(url: str, data: Dict, name: str) -> None:
+    """
+    POST and raise AssertionError if the request or response signals failure.
+    Reuses the process-wide ClientSession.
+    """
+    session = await _get_session()
+    async with session.post(url, json=data) as resp:
+        assert resp.status < 300, (
+            f"{name} update - HTTP {resp.status} - {data}"
+        )
+        body = await resp.json()
+        assert body.get("success"), (
+            f"{name} update - request not successful - {body.get('err')}"
+        )
 
 # async def http_put(logger: AsyncLogger, url: str, body: Dict) -> Any:
 #     result = dict()
@@ -82,18 +84,20 @@ async def http_post_with_exception(url: str, data: Dict, name: str):
 #         result["err"] = err_str
 #         return result
 
-
-async def http_put_with_exception(url: str, data: Dict, name: str):
-    async with aiohttp.ClientSession() as session:
-        async with session.put(url, json=data) as response:
-            assert response.status < 300, (
-                f"{name} update - error status code: {response.status} - {data}"
-            )
-            body = await response.json()
-            assert body["success"], (
-                f"{name} update - request not successful - {body['err']}"
-            )
-
+async def http_put_with_exception(url: str, data: Dict, name: str) -> None:
+    """
+    PUT and raise AssertionError if the request or response signals failure.
+    Reuses the process-wide ClientSession.
+    """
+    session = await _get_session()
+    async with session.put(url, json=data) as resp:
+        assert resp.status < 300, (
+            f"{name} update - HTTP {resp.status} - {data}"
+        )
+        body = await resp.json()
+        assert body.get("success"), (
+            f"{name} update - request not successful - {body.get('err')}"
+        )
 
 async def _close_session() -> None:
     global _session

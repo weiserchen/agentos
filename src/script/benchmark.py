@@ -6,6 +6,7 @@ import logging
 from typing import List
 
 from agentos.utils.logger import AsyncLogger
+from agentos.tasks.elem import TaskStatus
 from .benchmark_tasks import benchmark_tasks
 from agentos.tasks.utils import http_post, http_get 
 
@@ -43,14 +44,19 @@ async def execute_task(logger: AsyncLogger) -> None:
         assert resp["success"]
         body = resp["body"]
 
-        if body["status"] == "ok":
+        status = body["status"]
+        if status == TaskStatus.COMPLETED:
             if body["success"] is False:
                 await logger.error(f"[Task {task_id}] - failed with error: {body['result']}")
                 return
             break
-        elif body["status"] == "not exist":
+        elif status == TaskStatus.NON_EXIST:
             await logger.error(f"[Task {task_id}] - not found")
             return
+        elif status == TaskStatus.PENDING:
+            pass
+        else:
+            raise Exception(f"Invalid task status: {status}")
 
     latency = time.perf_counter() - t_start
 
