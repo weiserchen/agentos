@@ -1,0 +1,73 @@
+[benchmark] - INFO - [    1 done]  avg-latency =  54.171s  throughput =   0.02 req/s
+[benchmark] - INFO - [    2 done]  avg-latency =  49.643s  throughput =   0.03 req/s
+[benchmark] - INFO - [    3 done]  avg-latency =  50.816s  throughput =   0.05 req/s
+[benchmark] - INFO - [    4 done]  avg-latency =  52.401s  throughput =   0.05 req/s
+[benchmark] - INFO - [    5 done]  avg-latency =  55.356s  throughput =   0.06 req/s
+[benchmark] - INFO - [    6 done]  avg-latency =  58.161s  throughput =   0.07 req/s
+[benchmark] - INFO - [    7 done]  avg-latency =  57.661s  throughput =   0.08 req/s
+[benchmark] - INFO - [    8 done]  avg-latency =  58.225s  throughput =   0.09 req/s
+[benchmark] - INFO - [    9 done]  avg-latency =  59.889s  throughput =   0.09 req/s
+[benchmark] - INFO - [   10 done]  avg-latency =  59.716s  throughput =   0.10 req/s
+[benchmark] - INFO - [   11 done]  avg-latency =  61.761s  throughput =   0.11 req/s
+[benchmark] - INFO - [   12 done]  avg-latency =  62.379s  throughput =   0.11 req/s
+[benchmark] - INFO - [   13 done]  avg-latency =  63.904s  throughput =   0.11 req/s
+[benchmark] - INFO - [   14 done]  avg-latency =  65.927s  throughput =   0.11 req/s
+[benchmark] - INFO - [   15 done]  avg-latency =  66.412s  throughput =   0.12 req/s
+[benchmark] - INFO - [   16 done]  avg-latency =  66.585s  throughput =   0.12 req/s
+[benchmark] - INFO - [   17 done]  avg-latency =  68.892s  throughput =   0.12 req/s
+[benchmark] - INFO - [   18 done]  avg-latency =  69.633s  throughput =   0.12 req/s
+[benchmark] - INFO - [   19 done]  avg-latency =  70.586s  throughput =   0.12 req/s
+[benchmark] - INFO - [   20 done]  avg-latency =  71.844s  throughput =   0.12 req/s
+[benchmark] - INFO - [   21 done]  avg-latency =  72.624s  throughput =   0.12 req/s
+[benchmark] - INFO - [   22 done]  avg-latency =  74.245s  throughput =   0.13 req/s
+[benchmark] - INFO - [   23 done]  avg-latency =  72.630s  throughput =   0.13 req/s
+[benchmark] - INFO - [   24 done]  avg-latency =  74.408s  throughput =   0.13 req/s
+[benchmark] - INFO - [   25 done]  avg-latency =  78.530s  throughput =   0.14 req/s
+[benchmark] - INFO - [   26 done]  avg-latency =  78.884s  throughput =   0.13 req/s
+[benchmark] - INFO - [   27 done]  avg-latency =  78.860s  throughput =   0.13 req/s
+[benchmark] - INFO - [   28 done]  avg-latency =  78.907s  throughput =   0.13 req/s
+[benchmark] - INFO - [   29 done]  avg-latency =  79.435s  throughput =   0.13 req/s
+[benchmark] - INFO - [   30 done]  avg-latency =  80.195s  throughput =   0.13 req/s
+[benchmark] - INFO - [   31 done]  avg-latency =  81.003s  throughput =   0.13 req/s
+[benchmark] - INFO - [   32 done]  avg-latency =  81.230s  throughput =   0.13 req/s
+[benchmark] - INFO - [   33 done]  avg-latency =  81.290s  throughput =   0.14 req/s
+[benchmark] - INFO - [   34 done]  avg-latency =  80.138s  throughput =   0.13 req/s
+[benchmark] - INFO - [   35 done]  avg-latency =  79.768s  throughput =   0.14 req/s
+[benchmark] - INFO - [   36 done]  avg-latency =  78.834s  throughput =   0.14 req/s
+[benchmark] - INFO - [   37 done]  avg-latency =  79.576s  throughput =   0.14 req/s
+[benchmark] - INFO - [   38 done]  avg-latency =  80.885s  throughput =   0.14 req/s
+[benchmark] - INFO - [   39 done]  avg-latency =  81.535s  throughput =   0.15 req/s
+[benchmark] - INFO - [   40 done]  avg-latency =  80.901s  throughput =   0.14 req/s
+[benchmark] - INFO - [   41 done]  avg-latency =  80.273s  throughput =   0.14 req/s
+[benchmark] - INFO - [   42 done]  avg-latency =  81.751s  throughput =   0.14 req/s
+[benchmark] - INFO - [   43 done]  avg-latency =  81.739s  throughput =   0.15 req/s
+[benchmark] - INFO - [   44 done]  avg-latency =  80.861s  throughput =   0.15 req/s
+[benchmark] - INFO - [   45 done]  avg-latency =  83.141s  throughput =   0.15 req/s
+[benchmark] - INFO - [   46 done]  avg-latency =  82.380s  throughput =   0.15 req/s
+[benchmark] - INFO - [   47 done]  avg-latency =  82.942s  throughput =   0.16 req/s
+[benchmark] - INFO - Stopped dispatcing new requests. Waiting for in-flight requests ...
+[benchmark] - INFO - [   48 done]  avg-latency =  83.908s  throughput =   0.16 req/s
+[benchmark] - INFO - [   49 done]  avg-latency =  84.508s  throughput =   0.16 req/s
+[benchmark] - INFO - [   50 done]  avg-latency =  85.004s  throughput =   0.15 req/s
+[benchmark] - INFO - [   51 done]  avg-latency =  85.382s  throughput =   0.16 req/s
+[benchmark] - INFO - [   52 done]  avg-latency =  86.034s  throughput =   0.16 req/s
+[benchmark] - INFO - [   53 done]  avg-latency =  87.116s  throughput =   0.16 req/s
+[benchmark] - INFO - [   54 done]  avg-latency =  87.026s  throughput =   0.16 req/s
+[benchmark] - INFO - [   55 done]  avg-latency =  86.829s  throughput =   0.16 req/s
+[benchmark] - INFO - [   56 done]  avg-latency =  86.263s  throughput =   0.16 req/s
+[benchmark] - INFO - [   57 done]  avg-latency =  85.964s  throughput =   0.16 req/s
+[benchmark] - INFO - [   58 done]  avg-latency =  86.747s  throughput =   0.16 req/s
+[benchmark] - INFO - [   59 done]  avg-latency =  86.806s  throughput =   0.16 req/s
+[benchmark] - INFO - [   60 done]  avg-latency =  87.131s  throughput =   0.16 req/s
+[benchmark] - INFO - [   61 done]  avg-latency =  88.349s  throughput =   0.16 req/s
+[benchmark] - INFO - [   62 done]  avg-latency =  89.769s  throughput =   0.16 req/s
+[benchmark] - INFO - [   63 done]  avg-latency =  90.350s  throughput =   0.16 req/s
+[benchmark] - INFO - [   64 done]  avg-latency =  94.827s  throughput =   0.16 req/s
+[benchmark] - INFO - [   65 done]  avg-latency =  95.636s  throughput =   0.16 req/s
+[benchmark] - INFO - [   66 done]  avg-latency =  99.275s  throughput =   0.13 req/s
+[benchmark] - INFO - [   67 done]  avg-latency = 101.476s  throughput =   0.12 req/s
+[benchmark] - INFO - Finished.
+Total completed: 67
+Average latency: 101.476s
+Overall throughput: 0.12 req/s
+[benchmark] - INFO - stopping logger...

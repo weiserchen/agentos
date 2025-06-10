@@ -74,52 +74,58 @@ class AgentGatewayServer:
         }
 
     async def query(self, query_event: TaskQueryEvent):
-        try:
-            agent = pick_random_agent(self.agents)
-            db_data = {
-                "task_agent": agent.id,
-                "task_name": query_event.task_name,
-                "task_description": query_event.task_description,
-                "n_rounds": query_event.n_rounds,
-                "n_samples": query_event.n_samples,
-                "n_voters": query_event.n_voters,
-            }
-            resp = await http_post(self.dbserver_url + "/task", db_data)
-            assert resp["success"]
-            body = resp["body"]
-            assert body["success"], body["err"]
-            task_id = body["task_id"]
+        MAX_RETRIES = 3 
+        for attempt in range(MAX_RETRIES):
+            try:
+                if not self.agents:
+                    await self.logger.error("query - No agents available to process the task.")
+                    return {"success": False, "err": "No agents available"}
 
-            await self.logger.debug(f"task {task_id} created")
+                agent = pick_random_agent(self.agents)
+                db_data = {
+                    "task_agent": agent.id,
+                    "task_name": query_event.task_name,
+                    "task_description": query_event.task_description,
+                    "n_rounds": query_event.n_rounds,
+                    "n_samples": query_event.n_samples,
+                    "n_voters": query_event.n_voters,
+                }
+                resp = await http_post(self.dbserver_url + "/task", db_data)
+                assert resp["success"], f"DB task creation failed: {resp.get('error')}"
+                body = resp["body"]
+                assert body["success"], body["err"]
+                task_id = body["task_id"]
 
-            data = {
-                "task_id": task_id,
-                "round": 0,
-                "term": 0,
-                "task_name": query_event.task_name,
-                "task_description": query_event.task_description,
-                "task_result": "",
-                "n_rounds": query_event.n_rounds,
-                "n_samples": query_event.n_samples,
-                "n_voters": query_event.n_voters,
-            }
-            await self.logger.debug(f"query - {data}")
+                await self.logger.debug(f"Task {task_id} created, assigned to {agent.id}")
 
-            resp = await http_post(agent.addr + "/coordinator", data)
-            assert resp["success"]
-            body = resp["body"]
-            assert body["success"], body["err"]
-            self.task_map[task_id] = TaskResult(task_id)
-            return {
-                "success": True,
-                "task_id": task_id,
-            }
+                data = {
+                    "task_id": task_id,
+                    "round": 0,
+                    "term": 0,
+                    "task_name": query_event.task_name,
+                    "task_description": query_event.task_description,
+                    "task_result": "",
+                    "n_rounds": query_event.n_rounds,
+                    "n_samples": query_event.n_samples,
+                    "n_voters": query_event.n_voters,
+                }
 
-        except Exception as err:
-            await self.logger.error(f"query - exception: {err}")
-            return {
-                "success": False,
-            }
+                resp = await http_post(agent.addr + "/coordinator", data)
+                assert resp["success"], f"Proxy communication failed to {agent.id}: {resp.get('error')}"
+                body = resp["body"]
+                assert body["success"], body["err"]
+                self.task_map[task_id] = TaskResult(task_id)
+                return {
+                    "success": True,
+                    "task_id": task_id,
+                }
+
+            except Exception as err:
+                await self.logger.warning(f"query - exception: (attempt {attempt + 1}/{MAX_RETRIES}) failed: {err}. Retrying with another agent...")
+                if attempt >= MAX_RETRIES - 1:
+                    await self.logger.error(f"Gateway query failed after {MAX_RETRIES} retries: {err}")
+                    return {"success": False, "err": str(err)}
+                await asyncio.sleep(0.5)
 
     async def task_update(self, update_event: TaskUpdateEvent):
         await self.logger.info(f"update status - {update_event}")

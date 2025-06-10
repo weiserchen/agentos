@@ -48,15 +48,40 @@ def pick_random_k_agents(agents: Dict[str, AgentInfo], k: int) -> List[AgentInfo
 #     return chosen
 
 
+# def pick_least_loaded_k_agents(agents: Dict[str, AgentInfo], k: int) -> List[AgentInfo]:
+#     load = {aid: a.workload for aid, a in agents.items()}
+#     chosen: List[AgentInfo] = []
+
+#     for _ in range(k):
+#         best_id = min(load, key=load.get)
+#         chosen.append(agents[best_id])
+#         load[best_id] += 1
+
+#     return chosen
+
 def pick_least_loaded_k_agents(agents: Dict[str, AgentInfo], k: int) -> List[AgentInfo]:
-    load = {aid: a.workload for aid, a in agents.items()}
+    """
+    Picks k agents by repeatedly selecting the one with the least current load,
+    while ensuring that if k > 1 and more than one agent is available, the final
+    selection contains at least two distinct agents.
+    """
+    if len(agents) == 1:
+        return [list(agents.values())[0]] * k
+
+    simulated_load = {aid: a.workload for aid, a in agents.items()}
     chosen: List[AgentInfo] = []
 
+    # --- Step 1: Select k agents based on least workload ---
     for _ in range(k):
-        best_id = min(load, key=load.get)
+        best_id = min(simulated_load, key=simulated_load.get)
         chosen.append(agents[best_id])
-        load[best_id] += 1
+        simulated_load[best_id] += 1
 
+    # --- Step 2: Post-processing check for diversity ---
+    if len({agent.id for agent in chosen}) == 1:
+        sorted_agents = sorted(agents.values(), key=lambda a: a.workload)
+        chosen[-1] = sorted_agents[1] # Replace the last agent with the second least loaded agent
+        
     return chosen
 
 
