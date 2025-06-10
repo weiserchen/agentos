@@ -48,8 +48,9 @@ scheduling_policy = "srtf"  # Options: "fifo", "arrival_priority", "sjf", "srtf"
 voting_strategy = "early_majority"  # Options: "naive", "early_majority"
 
 enable_failures       = True     
-mean_failure_interval = 30
+mean_failure_interval = 60
 mean_down_time        = 10
+restart_from_scratch  = False  # If True, restart tasks from scratch on recovery
 
 def run_gateway():
     try:
@@ -84,6 +85,7 @@ def run_recovery():
             monitor_url,
             dbserver_url,
             update_interval=recovery_interval,
+            restart_from_scratch=restart_from_scratch,
         )
         recovery.run(recovery_host, recovery_port)
     except Exception as e:

@@ -32,6 +32,7 @@ class AgentRecoveryServer:
         dbserver_url: str,
         update_interval: int = 10,
         log_level: int = logging.WARNING,
+        restart_from_scratch: bool = False,
     ):
         self.monitor_url = monitor_url
         self.dbserver_url = dbserver_url
@@ -41,6 +42,7 @@ class AgentRecoveryServer:
         self.lock = asyncio.Lock()
         self.log_level = log_level
         self.logger = AsyncLogger("recovery", level=log_level)
+        self.restart_from_scratch = restart_from_scratch
 
     async def ready(self):
         return {
@@ -57,16 +59,20 @@ class AgentRecoveryServer:
 
         async def recover_task(task) -> bool:
             task["term"] += 1
-            task["round"] += 1
             task_id = task["task_id"]
-            round = task["round"]
             term = task["term"]
             task_name = task["task_name"]
             task_description = task["task_description"]
-            task_result = task["task_result"]
             n_rounds = task["n_rounds"]
             n_samples = task["n_samples"]
             n_voters = task["n_voters"]
+            if self.restart_from_scratch:
+                round = 0
+                task_result = ""
+            else:
+                task["round"] += 1
+                round = task["round"]
+                task_result = task["task_result"]
             data = {
                 "task_id": task_id,
                 "round": round,
